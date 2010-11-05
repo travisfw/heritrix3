@@ -196,10 +196,30 @@ public class WARCWriterProcessor extends WriterPoolProcessor {
         return ProcessResult.PROCEED;
     }
     
+    private PerformanceStat stat;
+    {
+        stat = new PerformanceStat();
+    }
+    
+    @Override
+    public String report() {
+        StringBuilder sb = new StringBuilder(super.report());
+        sb.append("  poolMaxActive: ").append(getPoolMaxActive()).append("\n");
+        sb.append("  totalBytesWritten: ").append(getTotalBytesWritten()).append("\n");
+        PerformanceStat.Record r = stat.getRecord();
+        sb.append(String.format("  wait(5-min): min=%d max=%d avg=%.2f\n",
+                r.minWait, r.maxWait, r.getAverageWait()));
+        sb.append(String.format("  process(5-min): min=%d max=%d avg=%.2f\n",
+                r.minProcess, r.maxProcess, r.getAverageProcess()));
+        return sb.toString();
+    }
+    
     protected ProcessResult write(final String lowerCaseScheme, 
             final CrawlURI curi)
     throws IOException {
+        long t0 = System.currentTimeMillis();
         WriterPoolMember writer = getPool().borrowFile();
+        long t1 = System.currentTimeMillis();
         long position = writer.getPosition();
         // See if we need to open a new file because we've exceeed maxBytes.
         // Call to checkFileSize will open new file if we're at maximum for
@@ -239,6 +259,8 @@ public class WARCWriterProcessor extends WriterPoolProcessor {
             writer = null;
             throw e;
         } finally {
+            long t2 = System.currentTimeMillis();
+            stat.update(t1 - t0, t2 - t1);
             if (writer != null) {
             	setTotalBytesWritten(getTotalBytesWritten() +
             	     (writer.getPosition() - position));
