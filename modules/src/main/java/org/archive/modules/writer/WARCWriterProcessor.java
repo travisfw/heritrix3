@@ -196,24 +196,6 @@ public class WARCWriterProcessor extends WriterPoolProcessor {
         return ProcessResult.PROCEED;
     }
     
-    private PerformanceStat stat;
-    {
-        stat = new PerformanceStat();
-    }
-    
-    @Override
-    public String report() {
-        StringBuilder sb = new StringBuilder(super.report());
-        sb.append("  poolMaxActive: ").append(getPoolMaxActive()).append("\n");
-        sb.append("  totalBytesWritten: ").append(getTotalBytesWritten()).append("\n");
-        PerformanceStat.Record r = stat.getRecord();
-        sb.append(String.format("  wait(5-min): min=%d max=%d avg=%.2f\n",
-                r.minWait, r.maxWait, r.getAverageWait()));
-        sb.append(String.format("  process(5-min): min=%d max=%d avg=%.2f\n",
-                r.minProcess, r.maxProcess, r.getAverageProcess()));
-        return sb.toString();
-    }
-    
     protected ProcessResult write(final String lowerCaseScheme, 
             final CrawlURI curi)
     throws IOException {
