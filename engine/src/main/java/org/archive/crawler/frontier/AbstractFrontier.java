@@ -1275,14 +1275,14 @@ public abstract class AbstractFrontier
      * @param ev InEvent to be done
      */
     protected void enqueue(InEvent ev) {
-        if(!inbound.offer(ev)) {      
+//        if(!inbound.offer(ev)) {      
             try {
-                drainInbound();
+//                drainInbound();
                 inbound.put(ev);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-        }
+//        }
     }
     
     /**
