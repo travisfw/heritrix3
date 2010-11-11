@@ -472,8 +472,10 @@ implements Closeable,
                         "queue readied: " + wq.getClassKey());
             }
             // now that readyClassQueues changed, emit CrawlURI to outbound so that
-            // waiting ToeThread can take it.
-            findEligibleURI();
+            // waiting ToeThread can take it. we do this only if outbound is empty
+            // to avoid deadlock.
+            if (outbound.isEmpty())
+                findEligibleURI();
         } catch (InterruptedException e) {
             e.printStackTrace();
             System.err.println("unable to ready queue "+wq);
