@@ -373,9 +373,26 @@ public abstract class AbstractFrontier
                         }
                         reachedState(State.RUN);
                         // fill to-do 'on-deck' queue
-                        fillOutbound();
+                        // now that ToeThreads are also calling findEligibleURI(), there's no longer
+                        // a good reason for management thread to run fillOutbound(). Currently
+                        // findEligibleURI() is a synchronized method and fillOutbound() will take
+                        // pretty long to finish due to high contention with ToeThreads. Not processing
+                        // inbound queues that long results in ToeThread's running drainInbound()
+                        // instead, which in turn often results in occupying ToeThreads for more than 10
+                        // seconds. findEligibleURI() usually takes <2ms - so let ToeThreads do it
+                        // (that means, outbound queue is no longer necessary). management thread should
+                        // take responsibility of waking up snoozed queues, instead.
+                        //fillOutbound();
                         // process discovered and finished URIs
-                        drainInbound();
+                        
+                        // we don't need non-blocking drainInbound() here - simple blocking loop will do.
+                        //drainInbound();
+                        {
+                            InEvent ev = inbound.take(); 
+                            synchronized(this) {
+                                ev.process();
+                            }
+                        }
                         if(isEmpty()) {
                             // pause when frontier exhausted; controller will
                             // determine if this means to finish or not
@@ -456,14 +473,20 @@ public abstract class AbstractFrontier
      * @throws InterruptedException
      */
     protected void fillOutbound() throws InterruptedException {
+        long t0 = System.currentTimeMillis();
+        int curiCount = 0;
         while (outbound.remainingCapacity() > 0) {
+            long t1 = System.currentTimeMillis();
             CrawlURI crawlable = findEligibleURI();
+            logger.fine(String.format("findEligibleURI() returned in %dms", System.currentTimeMillis() - t1));
             if (crawlable != null) {
                 outbound.put(crawlable);
+                curiCount++;
             } else {
                 break;
             }
-        } 
+        }
+        logger.fine(String.format("finished in %dms, %d URIs added", System.currentTimeMillis() - t0, curiCount));
     }
     
     /**
@@ -473,6 +496,8 @@ public abstract class AbstractFrontier
      * @throws InterruptedException
      */
     protected void drainInbound() throws InterruptedException {
+        logger.fine("th:" + Thread.currentThread());
+        long t0 = System.currentTimeMillis();
         int batch = inbound.size();
         for(int i = 0; i < batch; i++) {
             InEvent ev = inbound.poll();
@@ -493,6 +518,8 @@ public abstract class AbstractFrontier
                 }
             }
         }
+        logger.fine(String.format("th:%s finished in %dms", 
+                Thread.currentThread(), System.currentTimeMillis() - t0));
     }
 
     /**
@@ -515,12 +542,16 @@ public abstract class AbstractFrontier
         // perhaps hold without taking ready outbound items
         outboundLock.readLock().lockInterruptibly();
         outboundLock.readLock().unlock();
-        
+        long t0 = System.currentTimeMillis();
         
         CrawlURI retval = outbound.poll();
         while(retval==null) {
             // try filling outbound until we get something to work on
+            long t1 = System.currentTimeMillis();
+            logger.fine("calling findEligibleURI()");
             CrawlURI crawlable = findEligibleURI();
+            logger.fine(String.format("th:%s findEligibleURI() done in %dms",
+                    Thread.currentThread(), System.currentTimeMillis() - t1));
             if (crawlable != null) {
                 outbound.put(crawlable);
                 retval = outbound.poll();
@@ -535,6 +566,8 @@ public abstract class AbstractFrontier
 //        if(outbound.size()<=1) {
 //            doOrEnqueue(NOOP);
 //        }
+        logger.fine(String.format("th:%s got URI in %dms",
+                Thread.currentThread(), System.currentTimeMillis() - t0));
         return retval;
     }
 

@@ -341,6 +341,7 @@ implements Closeable,
      * @param caUri CrawlURI.
      */
     protected void processScheduleAlways(CrawlURI curi) {
+        logger.fine("processScheduleAlways");
 //        assert Thread.currentThread() == managerThread;
         assert KeyedProperties.overridesActiveFrom(curi); 
         
@@ -632,23 +633,32 @@ implements Closeable,
      * @see org.archive.crawler.framework.Frontier#next()
      */
     protected synchronized CrawlURI findEligibleURI() {
+        long t0 = System.currentTimeMillis();
+        logger.fine(String.format("th:%s outbound.size=%d, readyClassQueues.size=%d",
+                Thread.currentThread(), outbound.size(), readyClassQueues.size()));
+
 //            assert Thread.currentThread() == managerThread;
             // wake any snoozed queues
             wakeQueues();
             // consider rescheduled URIS
             checkFutures();
-                   
-            // find a non-empty ready queue, if any 
+            logger.fine(String.format("after wake th:%s outbound.size=%d, readyClassQueues.size=%d",
+                    Thread.currentThread(), outbound.size(), readyClassQueues.size()));
+
+            CrawlURI curi = null;
             // TODO: refactor to untangle these loops, early-exits, etc!
-            WorkQueue readyQ = null;
             findauri: while(true) {
+                // find a non-empty ready queue, if any 
+                WorkQueue readyQ = null;
                 findaqueue: do {
                     String key = readyClassQueues.poll();
                     if(key==null) {
                         // no ready queues; try to activate one
                         if(!getInactiveQueuesByPrecedence().isEmpty() 
                             && highestPrecedenceWaiting < getPrecedenceFloor()) {
+                            long t1 = System.currentTimeMillis();
                             activateInactiveQueue();
+                            logger.fine(String.format("activateInactiveQueue took %dms", System.currentTimeMillis() - t1));
                             continue findaqueue;
                         } else {
                             // nothing ready or readyable
@@ -677,7 +687,6 @@ implements Closeable,
                
                 assert !inProcessQueues.contains(readyQ) : "double activation";
                 returnauri: while(true) { // loop left by explicit return or break on empty
-                    CrawlURI curi = null;
                     curi = readyQ.peek(this);   
                     if(curi == null) {
                         // should not reach
@@ -705,7 +714,8 @@ implements Closeable,
                         // curi was in right queue, emit
                         noteAboutToEmit(curi, readyQ);
                         inProcessQueues.add(readyQ);
-                        return curi;
+                        //return curi;
+                        break findauri;
                     }
                     // URI's assigned queue has changed since it
                     // was queued (eg because its IP has become
@@ -727,33 +737,36 @@ implements Closeable,
                 }
             }
                 
-            if(inProcessQueues.size()==0) {
-                // Nothing was ready or in progress or imminent to wake; ensure 
-                // any piled-up pending-scheduled URIs are considered
-                uriUniqFilter.requestFlush();
+            if (curi == null) {
+                if(inProcessQueues.size()==0) {
+                    // Nothing was ready or in progress or imminent to wake; ensure 
+                    // any piled-up pending-scheduled URIs are considered
+                    uriUniqFilter.requestFlush();
+                }
+
+                // never return null if there are any eligible inactives
+                if(getTotalEligibleInactiveQueues()>0) {
+                    if(depthFindEligibleURI>1) {
+                        logger.warning(
+                                "FRONTIER.findEligibleURIs depth: "+ depthFindEligibleURI
+                                +"\n"+shortReportLine());
+                    }
+                    if(depthFindEligibleURI>=5) {
+                        logger.severe("RETURNING null");
+                        //return null; 
+                    } else {
+                        try {
+                            depthFindEligibleURI++;
+                            //return findEligibleURI();
+                            curi = findEligibleURI();
+                        } finally {
+                            depthFindEligibleURI = 0; 
+                        }
+                    }
+                }
             }
-            
-            // never return null if there are any eligible inactives
-            if(getTotalEligibleInactiveQueues()>0) {
-                if(depthFindEligibleURI>1) {
-                    logger.warning(
-                        "FRONTIER.findEligibleURIs depth: "+ depthFindEligibleURI
-                        +"\n"+shortReportLine());
-                }
-                if(depthFindEligibleURI>=5) {
-                    logger.severe("RETURNING null");
-                    return null; 
-                }
-                try {
-                    depthFindEligibleURI++;
-                    return findEligibleURI();
-                } finally {
-                    depthFindEligibleURI = 0; 
-                }
-            }
-            
-            // nothing eligible
-            return null; 
+            logger.fine(String.format("findEligibleURI:%dms", System.currentTimeMillis() - t0));
+            return curi; 
     }
     
     // temporary debugging support
@@ -982,6 +995,7 @@ implements Closeable,
      * @see org.archive.crawler.framework.Frontier#finished(org.archive.modules.CrawlURI)
      */
     protected void processFinish(CrawlURI curi) {
+        logger.fine("processFinish");
 //        assert Thread.currentThread() == managerThread;
         
         long now = System.currentTimeMillis();
