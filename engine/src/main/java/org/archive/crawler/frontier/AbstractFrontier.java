@@ -386,12 +386,21 @@ public abstract class AbstractFrontier
                         // process discovered and finished URIs
                         
                         // we don't need non-blocking drainInbound() here - simple blocking loop will do.
-                        //drainInbound();
+//                        drainInbound();
                         {
-                            InEvent ev = inbound.take(); 
-                            synchronized(this) {
-                                ev.process();
+                            long delay = wakeQueues() - System.currentTimeMillis();
+                            if (delay < 0) {
+                                // already past next wake time.
+                                delay = 0;
                             }
+                            logger.fine("polling events for " + delay + "ms, queuedUriCount=" + queuedUriCount());
+                            InEvent ev = inbound.poll(delay, TimeUnit.MILLISECONDS);
+                            if (ev != null) {
+                                synchronized(this) {
+                                    ev.process();
+                                }
+                            }
+                            logger.fine("processed ev=" + ev + ", queuedUriCount=" + queuedUriCount());
                         }
                         if(isEmpty()) {
                             // pause when frontier exhausted; controller will
@@ -466,28 +475,28 @@ public abstract class AbstractFrontier
         // by default; nothing
     }
     
-    /**
-     * Fill the outbound queue with eligible CrawlURIs, to capacity
-     * or as much as possible. 
-     * 
-     * @throws InterruptedException
-     */
-    protected void fillOutbound() throws InterruptedException {
-        long t0 = System.currentTimeMillis();
-        int curiCount = 0;
-        while (outbound.remainingCapacity() > 0) {
-            long t1 = System.currentTimeMillis();
-            CrawlURI crawlable = findEligibleURI();
-            logger.fine(String.format("findEligibleURI() returned in %dms", System.currentTimeMillis() - t1));
-            if (crawlable != null) {
-                outbound.put(crawlable);
-                curiCount++;
-            } else {
-                break;
-            }
-        }
-        logger.fine(String.format("finished in %dms, %d URIs added", System.currentTimeMillis() - t0, curiCount));
-    }
+//    /**
+//     * Fill the outbound queue with eligible CrawlURIs, to capacity
+//     * or as much as possible. 
+//     * 
+//     * @throws InterruptedException
+//     */
+//    protected void fillOutbound() throws InterruptedException {
+//        long t0 = System.currentTimeMillis();
+//        int curiCount = 0;
+//        while (outbound.remainingCapacity() > 0) {
+//            long t1 = System.currentTimeMillis();
+//            CrawlURI crawlable = findEligibleURI();
+//            logger.fine(String.format("findEligibleURI() returned in %dms", System.currentTimeMillis() - t1));
+//            if (crawlable != null) {
+//                outbound.put(crawlable);
+//                curiCount++;
+//            } else {
+//                break;
+//            }
+//        }
+//        logger.fine(String.format("finished in %dms, %d URIs added", System.currentTimeMillis() - t0, curiCount));
+//    }
     
     /**
      * Drain the inbound queue of update events, or at the very least
@@ -549,17 +558,17 @@ public abstract class AbstractFrontier
             // try filling outbound until we get something to work on
             long t1 = System.currentTimeMillis();
             logger.fine("calling findEligibleURI()");
-            CrawlURI crawlable = findEligibleURI();
+            /*CrawlURI crawlable = */findEligibleURI();
             logger.fine(String.format("th:%s findEligibleURI() done in %dms",
                     Thread.currentThread(), System.currentTimeMillis() - t1));
-            if (crawlable != null) {
-                outbound.put(crawlable);
-                retval = outbound.poll();
-            } else {
-                // or if nothing ready, wait for other threads to fill for us
-                // (no busy spin) 
+//            if (crawlable != null) {
+//                outbound.put(crawlable);
+//                retval = outbound.poll();
+//            } else {
+//                // or if nothing ready, wait for other threads to fill for us
+//                // (no busy spin) 
                 retval = outbound.take();
-            } 
+//            } 
         }
         
 //      // TODO: consider if following necessary for maintaining throughput
@@ -572,13 +581,24 @@ public abstract class AbstractFrontier
     }
 
     /**
-     * Find a CrawlURI eligible to be put on the outbound queue for 
-     * processing. If none, return null. 
-     * @return the eligible URI, or null
+     * Find a CrawlURI eligible and put it on the outbound queue for 
+     * processing. If none found, return null. 
+     * @throws InterruptedException 
      */
-    abstract protected CrawlURI findEligibleURI();
+    abstract protected void findEligibleURI() throws InterruptedException;
     
-    
+    /**
+     * Wake any queues sitting in the snoozed queue whose time has come.
+     * <p>
+     * FIXME: bad name. {@link AbstractFrontier} should not be aware of "WorkQueue".
+     * this method has been promoted from {@link WorkQueueFrontier} - think of more
+     * abstract name suitable for {@link AbstractFrontier}.
+     * </p>
+     * @return return time (in ms) this method should be run. 
+     * or Long.MAX_VALUE if there's nothing to wake in the horizon.
+     */
+    abstract protected long wakeQueues();
+
     /**
      * Schedule the given CrawlURI regardless of its already-seen status. Only
      * to be called inside the managerThread, as by an InEvent. 
@@ -1336,6 +1356,10 @@ public abstract class AbstractFrontier
                 KeyedProperties.clearOverridesFrom(curi); 
             }
         } 
+        @Override
+        public String toString() {
+            return super.toString() + "[curi=" + curi + "]";
+        }
     }
     
     /**
@@ -1374,6 +1398,10 @@ public abstract class AbstractFrontier
                 KeyedProperties.clearOverridesFrom(caUri); 
             }
         }   
+        @Override
+        public String toString() {
+            return super.toString() + "[caUri=" + caUri + "]";
+        }
     }
     
     /**

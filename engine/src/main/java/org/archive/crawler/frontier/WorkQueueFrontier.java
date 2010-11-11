@@ -461,6 +461,7 @@ implements Closeable,
      * @param wq
      */
     private void readyQueue(WorkQueue wq) {
+        logger.fine("readyQueue");
 //        assert Thread.currentThread() == managerThread;
 
         try {
@@ -470,6 +471,9 @@ implements Closeable,
                 logger.log(Level.FINE,
                         "queue readied: " + wq.getClassKey());
             }
+            // now that readyClassQueues changed, emit CrawlURI to outbound so that
+            // waiting ToeThread can take it.
+            findEligibleURI();
         } catch (InterruptedException e) {
             e.printStackTrace();
             System.err.println("unable to ready queue "+wq);
@@ -632,14 +636,14 @@ implements Closeable,
      *
      * @see org.archive.crawler.framework.Frontier#next()
      */
-    protected synchronized CrawlURI findEligibleURI() {
+    protected synchronized void findEligibleURI() throws InterruptedException {
         long t0 = System.currentTimeMillis();
         logger.fine(String.format("th:%s outbound.size=%d, readyClassQueues.size=%d",
                 Thread.currentThread(), outbound.size(), readyClassQueues.size()));
 
 //            assert Thread.currentThread() == managerThread;
-            // wake any snoozed queues
-            wakeQueues();
+            // wake any snoozed queues - this is now done by managementTasks()
+            //wakeQueues();
             // consider rescheduled URIS
             checkFutures();
             logger.fine(String.format("after wake th:%s outbound.size=%d, readyClassQueues.size=%d",
@@ -659,7 +663,10 @@ implements Closeable,
                             long t1 = System.currentTimeMillis();
                             activateInactiveQueue();
                             logger.fine(String.format("activateInactiveQueue took %dms", System.currentTimeMillis() - t1));
-                            continue findaqueue;
+                            // readyQueue() called by activateInactiveQueue() should have put a CrawlURI into outbound by
+                            // recursively calling findEligibleURI(). we can simply exit now.
+                            //continue findaqueue;
+                            break findauri;
                         } else {
                             // nothing ready or readyable
                             break findaqueue;
@@ -725,6 +732,9 @@ implements Closeable,
                     curi.setClassKey(currentQueueKey);
                     decrementQueuedCount(1);
                     curi.setHolderKey(null);
+                    // probably it's better to do doOrEnqueue(new ScheduleAlways(curi)),
+                    // or receive(curi), because sendToQueue(curi) will now call findEligibleURI()
+                    // when curi is sent to ready queue.
                     sendToQueue(curi);
                     if(readyQ.getCount()==0) {
                         // readyQ is empty and ready: it's exhausted
@@ -743,30 +753,33 @@ implements Closeable,
                     // any piled-up pending-scheduled URIs are considered
                     uriUniqFilter.requestFlush();
                 }
-
-                // never return null if there are any eligible inactives
-                if(getTotalEligibleInactiveQueues()>0) {
-                    if(depthFindEligibleURI>1) {
-                        logger.warning(
-                                "FRONTIER.findEligibleURIs depth: "+ depthFindEligibleURI
-                                +"\n"+shortReportLine());
-                    }
-                    if(depthFindEligibleURI>=5) {
-                        logger.severe("RETURNING null");
-                        //return null; 
-                    } else {
-                        try {
-                            depthFindEligibleURI++;
-                            //return findEligibleURI();
-                            curi = findEligibleURI();
-                        } finally {
-                            depthFindEligibleURI = 0; 
-                        }
-                    }
-                }
+                // following should be no longer necessary.
+//                // never return null if there are any eligible inactives
+//                if(getTotalEligibleInactiveQueues()>0) {
+//                    if(depthFindEligibleURI>1) {
+//                        logger.warning(
+//                                "FRONTIER.findEligibleURIs depth: "+ depthFindEligibleURI
+//                                +"\n"+shortReportLine());
+//                    }
+//                    if(depthFindEligibleURI>=5) {
+//                        logger.severe("RETURNING null");
+//                        //return null; 
+//                    } else {
+//                        try {
+//                            depthFindEligibleURI++;
+//                            //return findEligibleURI();
+//                            curi = findEligibleURI();
+//                        } finally {
+//                            depthFindEligibleURI = 0; 
+//                        }
+//                    }
+//                }
             }
             logger.fine(String.format("findEligibleURI:%dms", System.currentTimeMillis() - t0));
-            return curi; 
+            // XXX risk of put's blocking?
+            if (curi != null)
+                outbound.put(curi);
+//            return curi; 
     }
     
     // temporary debugging support
@@ -947,8 +960,9 @@ implements Closeable,
     }
     /**
      * Wake any queues sitting in the snoozed queue whose time has come.
+     * @return return time this method should be run. 0 if there's no snoozed queue.
      */
-    protected void wakeQueues() {
+    protected synchronized long wakeQueues() {
         DelayedWorkQueue waked; 
         while((waked = snoozedClassQueues.poll())!=null) {
             WorkQueue queue = waked.getWorkQueue(this);
@@ -976,6 +990,12 @@ implements Closeable,
             } else {
                 break; // while 
             }
+        }
+        DelayedWorkQueue head = snoozedClassQueues.peek();
+        if (head != null) {
+            return head.getWakeTime();
+        } else {
+            return Long.MAX_VALUE;
         }
     }
     
@@ -1014,6 +1034,7 @@ implements Closeable,
         int holderCost = curi.getHolderCost();
 
         if (needsReenqueuing(curi)) {
+            logger.fine("needsReenqueueing");
             // codes/errors which don't consume the URI, leaving it atop queue
             if(curi.getFetchStatus()!=S_DEFERRED) {
                 wq.expend(holderCost); // all retries but DEFERRED cost
