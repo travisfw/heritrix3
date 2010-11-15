@@ -21,7 +21,6 @@ package org.archive.crawler.frontier;
 
 import static org.archive.modules.CoreAttributeConstants.A_NONFATAL_ERRORS;
 import static org.archive.modules.fetcher.FetchStatusCodes.S_BLOCKED_BY_CUSTOM_PROCESSOR;
-import static org.archive.modules.fetcher.FetchStatusCodes.S_UNATTEMPTED;
 import static org.archive.modules.fetcher.FetchStatusCodes.S_BLOCKED_BY_USER;
 import static org.archive.modules.fetcher.FetchStatusCodes.S_CONNECT_FAILED;
 import static org.archive.modules.fetcher.FetchStatusCodes.S_CONNECT_LOST;
@@ -32,6 +31,7 @@ import static org.archive.modules.fetcher.FetchStatusCodes.S_OUT_OF_SCOPE;
 import static org.archive.modules.fetcher.FetchStatusCodes.S_ROBOTS_PRECLUDED;
 import static org.archive.modules.fetcher.FetchStatusCodes.S_TOO_MANY_EMBED_HOPS;
 import static org.archive.modules.fetcher.FetchStatusCodes.S_TOO_MANY_LINK_HOPS;
+import static org.archive.modules.fetcher.FetchStatusCodes.S_UNATTEMPTED;
 
 import java.io.BufferedReader;
 import java.io.EOFException;
@@ -167,15 +167,6 @@ public abstract class AbstractFrontier
         this.inbound = inbound;
     }
 
-    /** outbound URIs */ 
-//    protected BlockingQueue<CrawlURI> outbound;
-//    public BlockingQueue<CrawlURI> getOutbound() {
-//        return outbound;
-//    }
-//    public void setOutbound(BlockingQueue<CrawlURI> outbound) {
-//        this.outbound = outbound;
-//    }
-    
     public boolean isRunning() {
         return managerThread!=null && managerThread.isAlive();
     }
@@ -285,7 +276,7 @@ public abstract class AbstractFrontier
      * Currently captures Frontier/URI transitions.
      * Can be null if user chose not to run a recovery.log.
      */
-    private FrontierJournal recover = null;
+    protected FrontierJournal recover = null;
     
     private boolean perHostStatEnabled = true;
     public void setPerHostStatEnabled(boolean perHostStatEnabled) {
@@ -322,12 +313,11 @@ public abstract class AbstractFrontier
     /** last Frontier.State reached; used to suppress duplicate notifications */
     State lastReachedState = null;
     /** Frontier.state that manager thread should seek to reach */
-    State targetState = State.PAUSE;
+    volatile State targetState = State.PAUSE;
 
     /**
-     * Start the manager thread.  Subclasses should invoke this in a custom
-     * readObject() method so that the manager thread begins after checkpoint
-     * recovery.
+     * Start the dedicated thread with an independent view of the frontier's
+     * state. 
      */
     protected void startManagerThread() {
         managerThread = new Thread(this+".managerThread") {
@@ -350,9 +340,6 @@ public abstract class AbstractFrontier
             throw new IllegalStateException(e);
         }
         
-//        if(outbound==null) {
-//            outbound = new ArrayBlockingQueue<CrawlURI>(200, true);
-//        }
         if(inbound==null) {
             inbound = new ArrayBlockingQueue<InEvent>(4000, true);
         }
@@ -458,16 +445,12 @@ public abstract class AbstractFrontier
                         // prevent all outbound takes
 //                        outboundLock.writeLock().lock();
                         // process all inbound
-                        // TODO: this inbound message processing is no longer
-                        // necessary, execution of finalTasks() must wait until
-                        // all ToeThreads finish current processing.
-//                        while (outbound.size() != getInProcessCount()) {
-//                            // continue to process discovered and finished URIs
-//                            InEvent ev = inbound.take(); 
-////                            synchronized(this) {
-//                                ev.process();
-////                            }
-//                        }
+                        // execution of finalTasks() must wait until all ToeThreads
+                        // finish current processing. TODO: use of sleep() is ugly.
+                        while (getInProcessCount()>0) {
+                            Thread.sleep(1000);
+                        }
+
                         finalTasks(); 
                         // TODO: more cleanup?
                         reachedState(State.FINISH);
@@ -480,8 +463,7 @@ public abstract class AbstractFrontier
                         // management thread should never post state change request
                         // through inbound queue - if inbound queue is full, it falls
                         // into deadlock, because nobody else can clear up inbound queue.
-                        //requestState(State.PAUSE);
-                        targetState = State.PAUSE;
+                        requestState(State.PAUSE);
                     }
                 }
             }
@@ -514,64 +496,6 @@ public abstract class AbstractFrontier
     protected void finalTasks() {
         // by default; nothing
     }
-    
-//    /**
-//     * Fill the outbound queue with eligible CrawlURIs, to capacity
-//     * or as much as possible. 
-//     * 
-//     * @throws InterruptedException
-//     */
-//    protected void fillOutbound() throws InterruptedException {
-//        long t0 = System.currentTimeMillis();
-//        int curiCount = 0;
-//        while (outbound.remainingCapacity() > 0) {
-//            long t1 = System.currentTimeMillis();
-//            CrawlURI crawlable = findEligibleURI();
-//            logger.fine(String.format("findEligibleURI() returned in %dms", System.currentTimeMillis() - t1));
-//            if (crawlable != null) {
-//                outbound.put(crawlable);
-//                curiCount++;
-//            } else {
-//                break;
-//            }
-//        }
-//        logger.fine(String.format("finished in %dms, %d URIs added", System.currentTimeMillis() - t0, curiCount));
-//    }
-    
-    /**
-     * Drain the inbound queue of update events, or at the very least
-     * wait until some additional delayed-queue URI becomes available. 
-     * 
-     * @throws InterruptedException
-     */
-    protected void drainInbound() throws InterruptedException {
-        if (logger.isLoggable(Level.FINE))
-            logger.fine("th:" + Thread.currentThread());
-        long t0 = System.currentTimeMillis();
-        int batch = inbound.size();
-        for(int i = 0; i < batch; i++) {
-            InEvent ev = inbound.poll();
-            if(ev==null) {
-                break;
-            }
-            synchronized(this) {
-                ev.process();
-            }
-        }
-        if(batch==0) {
-            // always do at least one timed try
-            InEvent ev = inbound.poll(getMaxInWait(),
-                    TimeUnit.MILLISECONDS);
-            if (ev != null) {
-                synchronized(this) {
-                    ev.process();
-                }
-            }
-        }
-        if (logger.isLoggable(Level.FINE))
-            logger.fine(String.format("th:%s finished in %dms", 
-                    Thread.currentThread(), System.currentTimeMillis() - t0));
-    }
 
     /**
      * The given state has been reached; if it is a new state, generate
@@ -590,12 +514,9 @@ public abstract class AbstractFrontier
      * @see org.archive.crawler.framework.Frontier#next()
      */
     public CrawlURI next() throws InterruptedException {
-        // perhaps hold without taking ready outbound items
-//        outboundLock.readLock().lockInterruptibly();
-//        outboundLock.readLock().unlock();
         long t0 = System.currentTimeMillis();
         
-        CrawlURI retval = null; //outbound.poll();
+        CrawlURI crawlable = null; //outbound.poll();
         do {
             // try filling outbound until we get something to work on
             long t1 = System.currentTimeMillis();
@@ -603,28 +524,16 @@ public abstract class AbstractFrontier
                 logger.fine("calling findEligibleURI()");
             // now findEligibleURI() will block until at least one queue becomes
             // ready. this is the new parking point for ToeThreads.
-            retval = findEligibleURI();
+            crawlable = findEligibleURI();
             if (logger.isLoggable(Level.FINE))
                 logger.fine(String.format("th:%s findEligibleURI() done in %dms",
                     Thread.currentThread(), System.currentTimeMillis() - t1));
-//            if (crawlable != null) {
-//                outbound.put(crawlable);
-//                retval = outbound.poll();
-//            } else {
-//                // or if nothing ready, wait for other threads to fill for us
-//                // (no busy spin) 
-//                retval = outbound.poll();
-//            } 
-        } while (retval == null);
+        } while (crawlable == null);
         
-//      // TODO: consider if following necessary for maintaining throughput
-//        if(outbound.size()<=1) {
-//            doOrEnqueue(NOOP);
-//        }
         if (logger.isLoggable(Level.FINE))
             logger.fine(String.format("th:%s got URI in %dms",
                     Thread.currentThread(), System.currentTimeMillis() - t0));
-        return retval;
+        return crawlable;
     }
 
     /**
@@ -728,9 +637,12 @@ public abstract class AbstractFrontier
     public void receive(CrawlURI curi) {
         sheetOverlaysManager.applyOverlaysTo(curi);
         // prefer doing asap if already in manager thread
-        //doOrEnqueue(new ScheduleAlways(curi));
-        // ToeThread-managed version
-        processScheduleAlways(curi);
+        try {
+            KeyedProperties.loadOverridesFrom(curi);
+            processScheduleAlways(curi);
+        } finally {
+            KeyedProperties.clearOverridesFrom(curi); 
+        }
     }
     
     /**
@@ -745,8 +657,12 @@ public abstract class AbstractFrontier
      * @see org.archive.crawler.framework.Frontier#finished(org.archive.modules.CrawlURI)
      */
     public void finished(CrawlURI curi) {
-        //enqueueOrDo(new Finish(curi));
-        processFinish(curi);
+        try {
+            KeyedProperties.loadOverridesFrom(curi);
+            processFinish(curi);
+        } finally {
+            KeyedProperties.clearOverridesFrom(curi); 
+        }
     }
     
     private void initJournal(String logsDisk) throws IOException {
@@ -765,15 +681,6 @@ public abstract class AbstractFrontier
      * @see org.archive.crawler.framework.Frontier#requestState(org.archive.crawler.framework.Frontier.State)
      */
     public void requestState(State target) {
-        enqueueOrDo(new SetTargetState(target));
-    }
-    
-    /**
-     * Actually set a new target Frontier.State. Should only be called in
-     * managerThread, as by an InEvent. 
-     */
-    protected void processSetTargetState(State target) {
-//        assert Thread.currentThread() == managerThread;
         targetState = target;
     }
     
@@ -785,7 +692,7 @@ public abstract class AbstractFrontier
         requestState(State.RUN);
     }
 
-    synchronized public void terminate() {
+    public void terminate() {
         requestState(State.FINISH);
     }
     
@@ -1326,65 +1233,17 @@ public abstract class AbstractFrontier
     /**
      * Arrange for the given InEvent to be done by the managerThread, via
      * enqueueing with other events if possible, but directly if not possible
-     * and this is the managerThread. 
+     * and this is the managerThread.
+     * TODO: this method is only used for sending NOOP message to management
+     * thread to wake it up. refactor.
      * @param ev InEvent to be done
      */
     protected void enqueue(InEvent ev) {
-//        if(!inbound.offer(ev)) {      
             try {
-//                drainInbound();
                 inbound.put(ev);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-//        }
-    }
-    
-    /**
-     * Arrange for the given InEvent to be done by the managerThread, via
-     * enqueueing with other events if possible, but directly if not possible
-     * and this is the managerThread. 
-     * @param ev InEvent to be done
-     */
-    protected void enqueueOrDo(InEvent ev) {
-        // for now, treat same as enqueue
-        // TODO: reevaluate
-        enqueue(ev); 
-//        if(!inbound.offer(ev)) {      
-//            // if can't defer, 
-//            if(Thread.currentThread()==managerThread) {
-//                // if can't enqueue, ok to just do
-//                synchronized(this) {
-//                    ev.process();
-//                }
-//                return; 
-//            } else {
-//                try {
-//                    drainInbound();
-//                    inbound.put(ev);
-//                } catch (InterruptedException e) {
-//                    throw new RuntimeException(e);
-//                }
-//            }
-//        }
-    }
-    
-    /**
-     * Arrange for the given InEvent to be done by the managerThread, 
-     * immediately if this is the managerThread, of via enqueueing with
-     * other inbound events otherwise.  
-     * @param ev InEvent to be done
-     */
-    protected void doOrEnqueue(InEvent ev) {
-        if (Thread.currentThread() == managerThread) {
-            // if can't enqueue, ok to just do
-            synchronized(this) {
-                ev.process();
-            }
-            return;
-        } else {
-            enqueue(ev);
-        }
     }
     
     /**
@@ -1392,88 +1251,7 @@ public abstract class AbstractFrontier
      */
     public abstract class InEvent {
         abstract public void process();
-    }
-    
-//    /**
-//     * A CrawlURI to be scheduled by the managerThread without regard to 
-//     * whether the CrawlURI was already-seen. 
-//     */
-//    public class ScheduleAlways extends InEvent {
-//        CrawlURI curi;
-//        public ScheduleAlways(CrawlURI c) {
-//            this.curi = c;
-//        }
-//        public void process() {
-//            try {
-//                KeyedProperties.loadOverridesFrom(curi);
-//                processScheduleAlways(curi);
-//            } finally {
-//                KeyedProperties.clearOverridesFrom(curi); 
-//            }
-//        } 
-//        @Override
-//        public String toString() {
-//            return super.toString() + "[curi=" + curi + "]";
-//        }
-//    }
-    
-//    /**
-//     * A CrawlURI to be scheduled by the managerThread if it has not been
-//     * already-seen. (That is, if it passes the UriUniqFilter.)
-//     */
-//    public class ScheduleIfUnique extends InEvent {
-//        CrawlURI curi;
-//        public ScheduleIfUnique(CrawlURI c) {
-//            this.curi = c;
-//        }
-//        public void process() {
-//            try {
-//                KeyedProperties.loadOverridesFrom(curi);
-//                processScheduleIfUnique(curi);
-//            } finally {
-//                KeyedProperties.clearOverridesFrom(curi); 
-//            }
-//        }   
-//    }
-    
-//    /**
-//     * A CrawlURI, previously issued via the outbound queue,  that has finished 
-//     * its processing chain with update implications for the frontier state.
-//     */
-//    public class Finish extends InEvent {
-//        CrawlURI caUri;
-//        public Finish(CrawlURI c) {
-//            this.caUri = c;
-//        }
-//        public void process() {
-//            try {
-//                KeyedProperties.loadOverridesFrom(caUri);
-//                processFinish(caUri);
-//            } finally {
-//                KeyedProperties.clearOverridesFrom(caUri); 
-//            }
-//        }   
-//        @Override
-//        public String toString() {
-//            return super.toString() + "[caUri=" + caUri + "]";
-//        }
-//    }
-    
-    /**
-     * An request that the frontier enter a new Frontier.State. 
-     */
-    public class SetTargetState extends InEvent {
-        State target;
-        public SetTargetState(State target) {
-            this.target = target;
-        }
-        @Override
-        public void process() {
-            processSetTargetState(target);
-            // TODO: perhaps null reachedState, because until new state is 
-            // reached it's misleading?
-        }
-    }
+    }        
 
     public void onApplicationEvent(ApplicationEvent event) {
         if(event instanceof CrawlStateEvent) {
