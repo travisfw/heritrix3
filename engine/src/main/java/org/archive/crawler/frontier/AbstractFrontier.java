@@ -421,10 +421,15 @@ public abstract class AbstractFrontier
                                 // waiting in outbound, we are at PAUSE
                                 reachedState(State.PAUSE);
                             }
-                            // continue to process discovered and finished URIs
-                            InEvent ev = inbound.take(); 
-                            synchronized(this) {
-                                ev.process();
+                            // continue to process discovered and finished URIs.
+                            // use poll with timeout to deal with status transition
+                            // without inbound message (such as thread death while
+                            // processing).
+                            InEvent ev = inbound.poll(1L, TimeUnit.SECONDS);
+                            if (ev != null) {
+                                synchronized(this) {
+                                    ev.process();
+                                }
                             }
                         }
                         break;
@@ -448,7 +453,11 @@ public abstract class AbstractFrontier
                     // log, try to pause, continue
                     logger.log(Level.SEVERE,"",e);
                     if(targetState!=State.PAUSE && targetState!=State.FINISH) {
-                        requestState(State.PAUSE);
+                        // management thread should never post state change request
+                        // through inbound queue - if inbound queue is full, it falls
+                        // into deadlock, because nobody else can clear up inbound queue.
+                        //requestState(State.PAUSE);
+                        targetState = State.PAUSE;
                     }
                 }
             }
