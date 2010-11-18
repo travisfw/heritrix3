@@ -341,7 +341,8 @@ implements Closeable,
      * @param caUri CrawlURI.
      */
     protected void processScheduleAlways(CrawlURI curi) {
-        logger.fine("processScheduleAlways");
+        if (logger.isLoggable(Level.FINE))
+            logger.fine("processScheduleAlways");
 //        assert Thread.currentThread() == managerThread;
         assert KeyedProperties.overridesActiveFrom(curi); 
         
@@ -461,7 +462,8 @@ implements Closeable,
      * @param wq
      */
     private void readyQueue(WorkQueue wq) {
-        logger.fine("readyQueue");
+        if (logger.isLoggable(Level.FINE))
+            logger.fine("readyQueue");
 //        assert Thread.currentThread() == managerThread;
 
         try {
@@ -522,6 +524,7 @@ implements Closeable,
      * @return queue of inacti
      */
     protected Queue<String> getInactiveQueuesForPrecedence(int precedence) {
+        // TODO should synchronize on inactive queues map
         Map<Integer,Queue<String>> inactiveQueuesByPrecedence = 
             getInactiveQueuesByPrecedence();
         Queue<String> candidate = inactiveQueuesByPrecedence.get(precedence);
@@ -554,6 +557,7 @@ implements Closeable,
 
         getRetiredQueues().add(wq.getClassKey());
         decrementQueuedCount(wq.getCount());
+        // this should be done before inserting to retired queue
         wq.setRetired(true);
         if(logger.isLoggable(Level.FINE)) {
             logger.log(Level.FINE,
@@ -640,16 +644,18 @@ implements Closeable,
      */
     protected synchronized void findEligibleURI() throws InterruptedException {
         long t0 = System.currentTimeMillis();
-        logger.fine(String.format("th:%s outbound.size=%d, readyClassQueues.size=%d",
-                Thread.currentThread(), outbound.size(), readyClassQueues.size()));
+        if (logger.isLoggable(Level.FINE))
+            logger.fine(String.format("th:%s outbound.size=%d, readyClassQueues.size=%d",
+                    Thread.currentThread(), outbound.size(), readyClassQueues.size()));
 
 //            assert Thread.currentThread() == managerThread;
             // wake any snoozed queues - this is now done by managementTasks()
             //wakeQueues();
             // consider rescheduled URIS
             checkFutures();
-            logger.fine(String.format("after wake th:%s outbound.size=%d, readyClassQueues.size=%d",
-                    Thread.currentThread(), outbound.size(), readyClassQueues.size()));
+            if (logger.isLoggable(Level.FINE))
+                logger.fine(String.format("after wake th:%s outbound.size=%d, readyClassQueues.size=%d",
+                        Thread.currentThread(), outbound.size(), readyClassQueues.size()));
 
             CrawlURI curi = null;
             // TODO: refactor to untangle these loops, early-exits, etc!
@@ -664,7 +670,8 @@ implements Closeable,
                             && highestPrecedenceWaiting < getPrecedenceFloor()) {
                             long t1 = System.currentTimeMillis();
                             activateInactiveQueue();
-                            logger.fine(String.format("activateInactiveQueue took %dms", System.currentTimeMillis() - t1));
+                            if (logger.isLoggable(Level.FINE))
+                                logger.fine(String.format("activateInactiveQueue took %dms", System.currentTimeMillis() - t1));
                             // readyQueue() called by activateInactiveQueue() should have put a CrawlURI into outbound by
                             // recursively calling findEligibleURI(). we can simply exit now.
                             //continue findaqueue;
@@ -777,7 +784,8 @@ implements Closeable,
 //                    }
 //                }
             }
-            logger.fine(String.format("findEligibleURI:%dms", System.currentTimeMillis() - t0));
+            if (logger.isLoggable(Level.FINE))
+                logger.fine(String.format("findEligibleURI:%dms", System.currentTimeMillis() - t0));
             // XXX risk of put's blocking?
             if (curi != null)
                 outbound.put(curi);
@@ -1017,7 +1025,8 @@ implements Closeable,
      * @see org.archive.crawler.framework.Frontier#finished(org.archive.modules.CrawlURI)
      */
     protected void processFinish(CrawlURI curi) {
-        logger.fine("processFinish");
+        if (logger.isLoggable(Level.FINE))
+            logger.fine("processFinish");
 //        assert Thread.currentThread() == managerThread;
         
         long now = System.currentTimeMillis();
@@ -1036,7 +1045,8 @@ implements Closeable,
         int holderCost = curi.getHolderCost();
 
         if (needsReenqueuing(curi)) {
-            logger.fine("needsReenqueueing");
+            if (logger.isLoggable(Level.FINE))
+                logger.fine("needsReenqueueing");
             // codes/errors which don't consume the URI, leaving it atop queue
             if(curi.getFetchStatus()!=S_DEFERRED) {
                 wq.expend(holderCost); // all retries but DEFERRED cost
@@ -1157,7 +1167,8 @@ implements Closeable,
      * @param curi The CrawlURI to forget
      */
     protected void forget(CrawlURI curi) {
-        logger.finer("Forgetting " + curi);
+        if (logger.isLoggable(Level.FINER))
+            logger.finer("Forgetting " + curi);
         uriUniqFilter.forget(curi.getCanonicalString(), curi);
     }
 

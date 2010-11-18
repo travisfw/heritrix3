@@ -393,14 +393,16 @@ public abstract class AbstractFrontier
                                 // already past next wake time.
                                 delay = 0;
                             }
-                            logger.fine("polling events for " + delay + "ms, queuedUriCount=" + queuedUriCount());
+                            if (logger.isLoggable(Level.FINE))
+                                logger.fine("polling events for " + delay + "ms, queuedUriCount=" + queuedUriCount());
                             InEvent ev = inbound.poll(delay, TimeUnit.MILLISECONDS);
                             if (ev != null) {
                                 synchronized(this) {
                                     ev.process();
                                 }
                             }
-                            logger.fine("processed ev=" + ev + ", queuedUriCount=" + queuedUriCount());
+                            if (logger.isLoggable(Level.FINE))
+                                logger.fine("processed ev=" + ev + ", queuedUriCount=" + queuedUriCount());
                         }
                         if(isEmpty()) {
                             // pause when frontier exhausted; controller will
@@ -514,7 +516,8 @@ public abstract class AbstractFrontier
      * @throws InterruptedException
      */
     protected void drainInbound() throws InterruptedException {
-        logger.fine("th:" + Thread.currentThread());
+        if (logger.isLoggable(Level.FINE))
+            logger.fine("th:" + Thread.currentThread());
         long t0 = System.currentTimeMillis();
         int batch = inbound.size();
         for(int i = 0; i < batch; i++) {
@@ -536,8 +539,9 @@ public abstract class AbstractFrontier
                 }
             }
         }
-        logger.fine(String.format("th:%s finished in %dms", 
-                Thread.currentThread(), System.currentTimeMillis() - t0));
+        if (logger.isLoggable(Level.FINE))
+            logger.fine(String.format("th:%s finished in %dms", 
+                    Thread.currentThread(), System.currentTimeMillis() - t0));
     }
 
     /**
@@ -566,9 +570,11 @@ public abstract class AbstractFrontier
         while(retval==null) {
             // try filling outbound until we get something to work on
             long t1 = System.currentTimeMillis();
-            logger.fine("calling findEligibleURI()");
+            if (logger.isLoggable(Level.FINE))
+                logger.fine("calling findEligibleURI()");
             /*CrawlURI crawlable = */findEligibleURI();
-            logger.fine(String.format("th:%s findEligibleURI() done in %dms",
+            if (logger.isLoggable(Level.FINE))
+                logger.fine(String.format("th:%s findEligibleURI() done in %dms",
                     Thread.currentThread(), System.currentTimeMillis() - t1));
 //            if (crawlable != null) {
 //                outbound.put(crawlable);
@@ -584,8 +590,9 @@ public abstract class AbstractFrontier
 //        if(outbound.size()<=1) {
 //            doOrEnqueue(NOOP);
 //        }
-        logger.fine(String.format("th:%s got URI in %dms",
-                Thread.currentThread(), System.currentTimeMillis() - t0));
+        if (logger.isLoggable(Level.FINE))
+            logger.fine(String.format("th:%s got URI in %dms",
+                    Thread.currentThread(), System.currentTimeMillis() - t0));
         return retval;
     }
 
@@ -1232,7 +1239,8 @@ public abstract class AbstractFrontier
             // again. If no rfc2617 loaded, we should not be here.
             boolean loaded = curi.hasRfc2617Credential();
             if (!loaded && logger.isLoggable(Level.FINE)) {
-                logger.fine("Have 401 but no creds loaded " + curi);
+                if (logger.isLoggable(Level.FINE))
+                    logger.fine("Have 401 but no creds loaded " + curi);
             }
             return loaded;
         case S_DEFERRED:
