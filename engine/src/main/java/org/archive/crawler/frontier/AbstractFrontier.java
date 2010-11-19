@@ -396,13 +396,19 @@ public abstract class AbstractFrontier
                             if (logger.isLoggable(Level.FINE))
                                 logger.fine("polling events for " + delay + "ms, queuedUriCount=" + queuedUriCount());
                             InEvent ev = inbound.poll(delay, TimeUnit.MILLISECONDS);
+                            if (logger.isLoggable(Level.FINE))
+                                logger.fine("inbound.poll() returned ev=" + ev);
                             if (ev != null) {
                                 synchronized(this) {
+                                    long t0 = System.currentTimeMillis();
+                                    if (logger.isLoggable(Level.FINE))
+                                        logger.fine("running ev.process()");
                                     ev.process();
+                                    if (logger.isLoggable(Level.FINE))
+                                        logger.fine("ev.process() completed in " + (System.currentTimeMillis() - t0) + "ms, "
+                                                + "queuedUriCount=" + queuedUriCount());
                                 }
                             }
-                            if (logger.isLoggable(Level.FINE))
-                                logger.fine("processed ev=" + ev + ", queuedUriCount=" + queuedUriCount());
                         }
                         if(isEmpty()) {
                             // pause when frontier exhausted; controller will
@@ -572,6 +578,8 @@ public abstract class AbstractFrontier
             long t1 = System.currentTimeMillis();
             if (logger.isLoggable(Level.FINE))
                 logger.fine("calling findEligibleURI()");
+            // now findEligibleURI() will block until at least one queue becomes
+            // ready. this is the new parking point for ToeThreads.
             /*CrawlURI crawlable = */findEligibleURI();
             if (logger.isLoggable(Level.FINE))
                 logger.fine(String.format("th:%s findEligibleURI() done in %dms",
@@ -582,7 +590,7 @@ public abstract class AbstractFrontier
 //            } else {
 //                // or if nothing ready, wait for other threads to fill for us
 //                // (no busy spin) 
-                retval = outbound.take();
+                retval = outbound.poll();
 //            } 
         }
         

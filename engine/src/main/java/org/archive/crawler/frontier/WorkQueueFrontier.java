@@ -458,8 +458,12 @@ implements Closeable,
     }
 
     /**
-     * Put the given queue on the readyClassQueues queue
-     * @param wq
+     * Put the given queue on the readyClassQueues queue.
+     * <p>it will release {@link ToeThread}s waiting on readyClassQueues.
+     * see {@link #findEligibleURI()}. It is no longer necessary to
+     * call {@link #findEligibleURI()} to fill outbound queue. Waking up
+     * {@link ToeThread} handles it.</p>
+     * @param wq {@link WorkQueue} to become ready.
      */
     private void readyQueue(WorkQueue wq) {
         if (logger.isLoggable(Level.FINE))
@@ -468,16 +472,13 @@ implements Closeable,
 
         try {
             wq.setActive(this, true);
+            // this will release ToeThreads waiting on readyClassQueues.
+            // put operation would never block as readyClassQueues is unbounded.
             readyClassQueues.put(wq.getClassKey());
             if(logger.isLoggable(Level.FINE)) {
                 logger.log(Level.FINE,
                         "queue readied: " + wq.getClassKey());
             }
-            // now that readyClassQueues changed, emit CrawlURI to outbound so that
-            // waiting ToeThread can take it. we do this only if outbound is empty
-            // to avoid deadlock.
-            if (outbound.isEmpty())
-                findEligibleURI();
         } catch (InterruptedException e) {
             e.printStackTrace();
             System.err.println("unable to ready queue "+wq);
@@ -662,6 +663,7 @@ implements Closeable,
             findauri: while(true) {
                 // find a non-empty ready queue, if any 
                 WorkQueue readyQ = null;
+                int readyRetries = 0;
                 findaqueue: do {
                     String key = readyClassQueues.poll();
                     if(key==null) {
@@ -672,13 +674,23 @@ implements Closeable,
                             activateInactiveQueue();
                             if (logger.isLoggable(Level.FINE))
                                 logger.fine(String.format("activateInactiveQueue took %dms", System.currentTimeMillis() - t1));
-                            // readyQueue() called by activateInactiveQueue() should have put a CrawlURI into outbound by
-                            // recursively calling findEligibleURI(). we can simply exit now.
-                            //continue findaqueue;
-                            break findauri;
+                            // activateInactiveQueue() puts new queue in readyQueue. current thread should get it with
+                            // readyClassQueues.poll() above.
+                            // note activateInactiveQueue() may fail to activate a queue in some cases. in such a case, this
+                            // continue may result in busy wait, but usually such situation won't last long, I guess.
+                            if (++readyRetries > 10) {
+                                logger.warning("readyRetries=" + readyRetries + " maybe doing busy wait");
+                            }
+                            continue findaqueue;
                         } else {
-                            // nothing ready or readyable
-                            break findaqueue;
+                            // nothing ready or readyable now.
+                            // wait until some queue becomes ready. this is the parking point
+                            // for ToeThreads. while this will block other ToeThreads's entering,
+                            // it should have no impact on performance because even if they are
+                            // allowed to enter findEligibleURI(), there would be no ready queue
+                            // to take and have to wait until a queue becomes ready.
+                            key = readyClassQueues.take();
+                            // key should not be null at this point.
                         }
                     }
                     readyQ = getQueueFor(key);
