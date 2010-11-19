@@ -643,7 +643,7 @@ implements Closeable,
      *
      * @see org.archive.crawler.framework.Frontier#next()
      */
-    protected synchronized void findEligibleURI() throws InterruptedException {
+    protected /*synchronized*/ void findEligibleURI() throws InterruptedException {
         long t0 = System.currentTimeMillis();
         if (logger.isLoggable(Level.FINE))
             logger.fine(String.format("th:%s outbound.size=%d, readyClassQueues.size=%d",
@@ -665,7 +665,9 @@ implements Closeable,
                 WorkQueue readyQ = null;
                 int readyRetries = 0;
                 findaqueue: do {
-                    String key = readyClassQueues.poll();
+                    String key;
+                    synchronized (readyClassQueues) {
+                    key = readyClassQueues.poll();
                     if(key==null) {
                         // no ready queues; try to activate one
                         if(!getInactiveQueuesByPrecedence().isEmpty() 
@@ -692,6 +694,7 @@ implements Closeable,
                             key = readyClassQueues.take();
                             // key should not be null at this point.
                         }
+                    }
                     }
                     readyQ = getQueueFor(key);
                     if(readyQ==null) {
@@ -813,6 +816,7 @@ implements Closeable,
     protected void checkFutures() {
 //        assert Thread.currentThread() == managerThread;
         // TODO: consider only checking this every set interval
+        synchronized (futureUris) {
         Iterator<CrawlURI> iter = 
             futureUris.headMap(System.currentTimeMillis())
                 .values().iterator();
@@ -822,6 +826,7 @@ implements Closeable,
             iter.remove();
             futureUriCount.decrementAndGet();
             receive(curi);
+        }
         }
     }
     
@@ -982,9 +987,15 @@ implements Closeable,
     }
     /**
      * Wake any queues sitting in the snoozed queue whose time has come.
+     * <p>currently this method is only run by single management thread. so there's no need for
+     * synchronization. never make this method synchronized because it would prevent management thread from running 
+     * wakeQueues() when one or more ToeThreads are waiting on readyClassQueue ({@link #findEligibleURI()} is method-synchronized)
+     * and causes deadlock.
+     * when we let ToeThreads call {@link #processFinish(CrawlURI)} for themselves,
+     * access to objects must be synchronized, but we must not make this method synchronized.</p>
      * @return return time this method should be run. 0 if there's no snoozed queue.
      */
-    protected synchronized long wakeQueues() {
+    protected /*synchronized*/ long wakeQueues() {
         DelayedWorkQueue waked; 
         while((waked = snoozedClassQueues.poll())!=null) {
             WorkQueue queue = waked.getWorkQueue(this);
