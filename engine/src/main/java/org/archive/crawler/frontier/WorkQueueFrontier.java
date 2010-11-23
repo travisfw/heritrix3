@@ -494,6 +494,7 @@ implements Closeable,
     protected void deactivateQueue(WorkQueue wq) {
 //        assert Thread.currentThread() == managerThread;
         
+        synchronized (readyClassQueues) {
         int precedence = wq.getPrecedence();
         if(!wq.getOnInactiveQueues().contains(precedence)) {
             // not already on target, add
@@ -516,6 +517,7 @@ implements Closeable,
             }
         }
         wq.setActive(this, false);
+        }
     }
     
     /**
@@ -555,6 +557,8 @@ implements Closeable,
      */
     protected void retireQueue(WorkQueue wq) {
 //        assert Thread.currentThread() == managerThread;
+        // can be executed concurrently, assuming a WorkQueue is
+        // manipulated by only one thread at a time.
 
         getRetiredQueues().add(wq.getClassKey());
         decrementQueuedCount(wq.getCount());
@@ -916,6 +920,7 @@ implements Closeable,
      */
     protected void updateHighestWaiting(int startFrom) {
         // probe for new highestWaiting
+        synchronized (readyClassQueues) {
         for(int precedenceKey : getInactiveQueuesByPrecedence().tailMap(startFrom).keySet()) {
             if(!getInactiveQueuesByPrecedence().get(precedenceKey).isEmpty()) {
                 highestPrecedenceWaiting = precedenceKey;
@@ -924,6 +929,7 @@ implements Closeable,
         }
         // nothing waiting
         highestPrecedenceWaiting = Integer.MAX_VALUE;
+        }
     }
 
     /**
@@ -939,13 +945,15 @@ implements Closeable,
             logger.fine("queue reenqueued: " +
                 wq.getClassKey());
         }
-        if(highestPrecedenceWaiting < wq.getPrecedence() 
-            || (wq.isOverBudget() && highestPrecedenceWaiting <= wq.getPrecedence())
-            || wq.getPrecedence() >= getPrecedenceFloor()) {
-            // if still over budget, deactivate
-            deactivateQueue(wq);
-        } else {
-            readyQueue(wq);
+        synchronized (readyClassQueues) {
+            if(highestPrecedenceWaiting < wq.getPrecedence() 
+                    || (wq.isOverBudget() && highestPrecedenceWaiting <= wq.getPrecedence())
+                    || wq.getPrecedence() >= getPrecedenceFloor()) {
+                // if still over budget, deactivate
+                deactivateQueue(wq);
+            } else {
+                readyQueue(wq);
+            }
         }
     }
     
@@ -996,6 +1004,7 @@ implements Closeable,
      * @return return time this method should be run. 0 if there's no snoozed queue.
      */
     protected /*synchronized*/ long wakeQueues() {
+        synchronized (snoozedClassQueues) {
         DelayedWorkQueue waked; 
         while((waked = snoozedClassQueues.poll())!=null) {
             WorkQueue queue = waked.getWorkQueue(this);
@@ -1029,6 +1038,7 @@ implements Closeable,
             return head.getWakeTime();
         } else {
             return Long.MAX_VALUE;
+        }
         }
     }
     
@@ -1171,14 +1181,27 @@ implements Closeable,
      * @param delay_ms time to snooze in ms
      */
     private void snoozeQueue(WorkQueue wq, long now, long delay_ms) {
+        if (logger.isLoggable(Level.FINE))
+            logger.fine("snoozing " + wq + " for " + delay_ms + "ms");
         long nextTime = now + delay_ms;
         wq.setWakeTime(nextTime);
         DelayedWorkQueue dq = new DelayedWorkQueue(wq);
-        if(snoozedClassQueues.size()<MAX_SNOOZED_IN_MEMORY) {
-            snoozedClassQueues.add(dq);
-        } else {
-            snoozedOverflow.put(nextTime, dq);
-            snoozedOverflowCount.incrementAndGet();
+        // management thread may be touching snoozedClassQueue concurrently in wakeQueues
+        synchronized (snoozedClassQueues) {
+            if(snoozedClassQueues.size()<MAX_SNOOZED_IN_MEMORY) {
+                snoozedClassQueues.add(dq);
+                // let management thread (possibly waiting on inbound queue) know
+                // that snoozed queues have changed and perhaps it needs to recalculate
+                // sleep time. this implementation is pretty bad because enqueue() would
+                // block when inbound queue is full (hopefully it won't happen too often).
+                // simple signaling would be sufficient.
+                // this could be much simplified if we package snoozedClassQueues,
+                // snoozedOverflow, and management thread in one class.
+                enqueue(NOOP);
+            } else {
+                snoozedOverflow.put(nextTime, dq);
+                snoozedOverflowCount.incrementAndGet();
+            }
         }
     }
 

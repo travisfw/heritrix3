@@ -284,6 +284,11 @@ public abstract class AbstractFrontier
      */
     private FrontierJournal recover = null;
     
+    private boolean perHostStatEnabled = true;
+    public void setPerHostStatEnabled(boolean perHostStatEnabled) {
+        this.perHostStatEnabled = perHostStatEnabled;
+    }
+    
     /**
      * @param name Name of this frontier.
      * @param description Description for this frontier.
@@ -706,7 +711,9 @@ public abstract class AbstractFrontier
     public void receive(CrawlURI curi) {
         sheetOverlaysManager.applyOverlaysTo(curi);
         // prefer doing asap if already in manager thread
-        doOrEnqueue(new ScheduleAlways(curi));
+        //doOrEnqueue(new ScheduleAlways(curi));
+        // ToeThread-managed version
+        processScheduleAlways(curi);
     }
     
     /**
@@ -721,7 +728,8 @@ public abstract class AbstractFrontier
      * @see org.archive.crawler.framework.Frontier#finished(org.archive.modules.CrawlURI)
      */
     public void finished(CrawlURI curi) {
-        enqueueOrDo(new Finish(curi));
+        //enqueueOrDo(new Finish(curi));
+        processFinish(curi);
     }
     
     private void initJournal(String logsDisk) throws IOException {
@@ -786,21 +794,24 @@ public abstract class AbstractFrontier
     }
 
     protected void doJournalFinishedSuccess(CrawlURI c) {
-        tally(c,Stage.SUCCEEDED);
+        if (perHostStatEnabled)
+            tally(c,Stage.SUCCEEDED);
         if (this.recover != null) {
             this.recover.finishedSuccess(c);
         }
     }
 
     protected void doJournalAdded(CrawlURI c) {
-        tally(c,Stage.SCHEDULED);
+        if (perHostStatEnabled)
+            tally(c,Stage.SCHEDULED);
         if (this.recover != null) {
             this.recover.added(c);
         }
     }
     
     protected void doJournalRelocated(CrawlURI c) {
-        tally(c,Stage.RELOCATED);
+        if (perHostStatEnabled)
+            tally(c,Stage.RELOCATED);
         if (this.recover != null) {
             // TODO: log dequeue from original location somehow
             // this.recover.relocated(c);
@@ -808,21 +819,24 @@ public abstract class AbstractFrontier
     }
 
     protected void doJournalReenqueued(CrawlURI c) {
-        tally(c,Stage.RETRIED);
+        if (perHostStatEnabled)
+            tally(c,Stage.RETRIED);
         if (this.recover != null) {
             this.recover.reenqueued(c);
         }
     }
 
     protected void doJournalFinishedFailure(CrawlURI c) {
-        tally(c,Stage.FAILED);
+        if (perHostStatEnabled)
+            tally(c,Stage.FAILED);
         if (this.recover != null) {
             this.recover.finishedFailure(c);
         }
     }
 
     protected void doJournalDisregarded(CrawlURI c) {
-        tally(c, Stage.DISREGARDED);
+        if (perHostStatEnabled)
+            tally(c, Stage.DISREGARDED);
         if (this.recover != null) {
             this.recover.finishedDisregard(c);
         }
