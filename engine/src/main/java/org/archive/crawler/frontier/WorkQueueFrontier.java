@@ -670,10 +670,12 @@ implements Closeable,
                 int readyRetries = 0;
                 findaqueue: do {
                     String key;
-                    synchronized (readyClassQueues) {
                     key = readyClassQueues.poll();
                     if(key==null) {
                         // no ready queues; try to activate one
+                        // using readyClassQueue as sync object for convenience. actual
+                        // protected resources are highestPrecedenceWaiting
+                        synchronized (readyClassQueues) {
                         if(!getInactiveQueuesByPrecedence().isEmpty() 
                             && highestPrecedenceWaiting < getPrecedenceFloor()) {
                             long t1 = System.currentTimeMillis();
@@ -687,18 +689,18 @@ implements Closeable,
                             if (++readyRetries > 10) {
                                 logger.warning("readyRetries=" + readyRetries + " maybe doing busy wait");
                             }
-                            continue findaqueue;
-                        } else {
-                            // nothing ready or readyable now.
-                            // wait until some queue becomes ready. this is the parking point
-                            // for ToeThreads. while this will block other ToeThreads's entering,
-                            // it should have no impact on performance because even if they are
-                            // allowed to enter findEligibleURI(), there would be no ready queue
-                            // to take and have to wait until a queue becomes ready.
-                            key = readyClassQueues.take();
-                            // key should not be null at this point.
+                            //continue findaqueue;
+                            // fall through
                         }
-                    }
+                        }
+                        // nothing ready or readyable now.
+                        // wait until some queue becomes ready. this is the parking point
+                        // for ToeThreads. while this will block other ToeThreads's entering,
+                        // it should have no impact on performance because even if they are
+                        // allowed to enter findEligibleURI(), there would be no ready queue
+                        // to take and have to wait until a queue becomes ready.
+                        key = readyClassQueues.take();
+                        // key should not be null at this point.
                     }
                     readyQ = getQueueFor(key);
                     if(readyQ==null) {
