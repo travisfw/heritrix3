@@ -305,7 +305,7 @@ implements Checkpointable, BeanNameAware {
 
         inactiveQueuesByPrecedence = new TreeMap<Integer,Queue<String>>();
         
-        retiredQueues = bdb.getStoredQueue("retiredQueues", String.class, false);
+        retiredQueues = bdb.getStoredQueue("retiredQueues", String.class);
 
         // primary snoozed queues
         snoozedClassQueues = new DelayQueue<DelayedWorkQueue>();
@@ -326,7 +326,7 @@ implements Checkpointable, BeanNameAware {
      */
     @Override
     Queue<String> createInactiveQueueForPrecedence(int precedence) {
-        return bdb.getStoredQueue("inactiveQueues-"+precedence, String.class, false);
+        return bdb.getStoredQueue("inactiveQueues-"+precedence, String.class);
     }
     
     /**
