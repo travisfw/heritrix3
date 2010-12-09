@@ -202,7 +202,7 @@ implements Closeable,
     transient protected DelayQueue<DelayedWorkQueue> snoozedClassQueues;
     protected StoredSortedMap<Long,DelayedWorkQueue> snoozedOverflow; 
     protected AtomicInteger snoozedOverflowCount = new AtomicInteger(0); 
-    protected static int MAX_SNOOZED_IN_MEMORY = 5000; 
+    protected static int MAX_SNOOZED_IN_MEMORY = 10000; 
     
     /** URIs scheduled to be re-enqueued at future date */
     protected StoredSortedMap<Long, CrawlURI> futureUris; 
@@ -909,6 +909,7 @@ implements Closeable,
             queue.setWakeTime(0);
             reenqueueQueue(queue);
             iterOverflow.remove(); 
+            snoozedOverflowCount.decrementAndGet();
         }
     }
     
@@ -931,15 +932,19 @@ implements Closeable,
             reenqueueQueue(queue);
         }
         // also consider overflow (usually empty)
-        Iterator<DelayedWorkQueue> iter = 
-            snoozedOverflow.headMap(System.currentTimeMillis()).values().iterator();
-        while(iter.hasNext()) {
-            DelayedWorkQueue dq = iter.next();
-            iter.remove();
-            snoozedOverflowCount.decrementAndGet();
-            WorkQueue queue = dq.getWorkQueue(this);
-            queue.setWakeTime(0);
-            reenqueueQueue(queue);
+        if(!snoozedOverflow.isEmpty()) {
+            synchronized(snoozedOverflow) {
+                Iterator<DelayedWorkQueue> iter = 
+                    snoozedOverflow.headMap(System.currentTimeMillis()).values().iterator();
+                while(iter.hasNext()) {
+                    DelayedWorkQueue dq = iter.next();
+                    iter.remove();
+                    snoozedOverflowCount.decrementAndGet();
+                    WorkQueue queue = dq.getWorkQueue(this);
+                    queue.setWakeTime(0);
+                    reenqueueQueue(queue);
+                }
+            }
         }
         DelayedWorkQueue head = snoozedClassQueues.peek();
         if (head != null) {
