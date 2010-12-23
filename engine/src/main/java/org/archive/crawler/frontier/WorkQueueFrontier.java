@@ -42,6 +42,7 @@ import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -351,30 +352,30 @@ implements Closeable,
     }
     
     
-    /**
-     * Arrange for the given CrawlURI to be visited, if it is not
-     * already enqueued/completed. 
-     * 
-     * Differs from superclass in that it operates in calling thread, rather 
-     * than deferring operations via in-queue to managerThread. TODO: settle
-     * on either defer or in-thread approach after testing. 
-     *
-     * @see org.archive.crawler.framework.Frontier#schedule(org.archive.modules.CrawlURI)
-     */
-    @Override
-    public void schedule(CrawlURI curi) {
-        sheetOverlaysManager.applyOverlaysTo(curi);
-        try {
-            KeyedProperties.loadOverridesFrom(curi);
-            if(curi.getClassKey()==null) {
-                // remedial processing
-                preparer.prepare(curi);
-            }
-            processScheduleIfUnique(curi);
-        } finally {
-            KeyedProperties.clearOverridesFrom(curi); 
-        }
-    }
+//    /**
+//     * Arrange for the given CrawlURI to be visited, if it is not
+//     * already enqueued/completed. 
+//     * 
+//     * Differs from superclass in that it operates in calling thread, rather 
+//     * than deferring operations via in-queue to managerThread. TODO: settle
+//     * on either defer or in-thread approach after testing. 
+//     *
+//     * @see org.archive.crawler.framework.Frontier#schedule(org.archive.modules.CrawlURI)
+//     */
+//    @Override
+//    public void schedule(CrawlURI curi) {
+//        sheetOverlaysManager.applyOverlaysTo(curi);
+//        try {
+//            KeyedProperties.loadOverridesFrom(curi);
+//            if(curi.getClassKey()==null) {
+//                // remedial processing
+//                preparer.prepare(curi);
+//            }
+//            processScheduleIfUnique(curi);
+//        } finally {
+//            KeyedProperties.clearOverridesFrom(curi); 
+//        }
+//    }
 
     /**
      * Arrange for the given CrawlURI to be visited, if it is not
@@ -474,10 +475,19 @@ implements Closeable,
             wq.setActive(this, true);
             // this will release ToeThreads waiting on readyClassQueues.
             // put operation would never block as readyClassQueues is unbounded.
-            readyClassQueues.put(wq.getClassKey());
-            if(logger.isLoggable(Level.FINE)) {
-                logger.log(Level.FINE,
-                        "queue readied: " + wq.getClassKey());
+            readyLock.lock();
+            try {
+                // currently readyClassQueues.put() need owning readyLock,
+                // but I plan to make readyClassQueues a non-concurrent version of
+                // Queue.
+                readyClassQueues.put(wq.getClassKey());
+                if(logger.isLoggable(Level.FINE)) {
+                    logger.log(Level.FINE,
+                            "queue readied: " + wq.getClassKey());
+                }
+                queueReady.signal();
+            } finally {
+                readyLock.unlock();
             }
         } catch (InterruptedException e) {
             e.printStackTrace();
@@ -494,7 +504,7 @@ implements Closeable,
     protected void deactivateQueue(WorkQueue wq) {
 //        assert Thread.currentThread() == managerThread;
         
-        synchronized (readyClassQueues) {
+//        synchronized (readyClassQueues) {
         int precedence = wq.getPrecedence();
         if(!wq.getOnInactiveQueues().contains(precedence)) {
             // not already on target, add
@@ -517,7 +527,7 @@ implements Closeable,
             }
         }
         wq.setActive(this, false);
-        }
+//        }
     }
     
     /**
@@ -647,60 +657,54 @@ implements Closeable,
      *
      * @see org.archive.crawler.framework.Frontier#next()
      */
-    protected /*synchronized*/ void findEligibleURI() throws InterruptedException {
+    protected CrawlURI findEligibleURI() throws InterruptedException {
         long t0 = System.currentTimeMillis();
         if (logger.isLoggable(Level.FINE))
-            logger.fine(String.format("th:%s outbound.size=%d, readyClassQueues.size=%d",
-                    Thread.currentThread(), outbound.size(), readyClassQueues.size()));
+            logger.fine(String.format("th:%s readyClassQueues.size=%d",
+                    Thread.currentThread(), readyClassQueues.size()));
 
-//            assert Thread.currentThread() == managerThread;
             // wake any snoozed queues - this is now done by managementTasks()
             //wakeQueues();
             // consider rescheduled URIS
             checkFutures();
             if (logger.isLoggable(Level.FINE))
-                logger.fine(String.format("after wake th:%s outbound.size=%d, readyClassQueues.size=%d",
-                        Thread.currentThread(), outbound.size(), readyClassQueues.size()));
+                logger.fine(String.format("after wake th:%s readyClassQueues.size=%d",
+                        Thread.currentThread(), readyClassQueues.size()));
 
             CrawlURI curi = null;
             // TODO: refactor to untangle these loops, early-exits, etc!
             findauri: while(true) {
                 // find a non-empty ready queue, if any 
                 WorkQueue readyQ = null;
-                int readyRetries = 0;
                 findaqueue: do {
-                    String key;
-                    key = readyClassQueues.poll();
-                    if(key==null) {
-                        // no ready queues; try to activate one
-                        // using readyClassQueue as sync object for convenience. actual
-                        // protected resources are highestPrecedenceWaiting
-                        synchronized (readyClassQueues) {
-                        if(!getInactiveQueuesByPrecedence().isEmpty() 
-                            && highestPrecedenceWaiting < getPrecedenceFloor()) {
-                            long t1 = System.currentTimeMillis();
-                            activateInactiveQueue();
-                            if (logger.isLoggable(Level.FINE))
-                                logger.fine(String.format("activateInactiveQueue took %dms", System.currentTimeMillis() - t1));
-                            // activateInactiveQueue() puts new queue in readyQueue. current thread should get it with
-                            // readyClassQueues.poll() above.
-                            // note activateInactiveQueue() may fail to activate a queue in some cases. in such a case, this
-                            // continue may result in busy wait, but usually such situation won't last long, I guess.
-                            if (++readyRetries > 10) {
-                                logger.warning("readyRetries=" + readyRetries + " maybe doing busy wait");
+                    String key = null;
+                    readyLock.lock();
+                    try {
+                        do {
+                            // XXX WorkQueueFrontier should not make direct reference
+                            // to targetState
+                            if (targetState == State.RUN) {
+                                key = readyClassQueues.poll();
+                                if (key == null) {
+                                    // no ready queues; try to activate one
+                                    if (!getInactiveQueuesByPrecedence().isEmpty() && highestPrecedenceWaiting < getPrecedenceFloor()) {
+                                        long t1 = System.currentTimeMillis();
+                                        activateInactiveQueue();
+                                        if (logger.isLoggable(Level.FINE))
+                                            logger.fine(String.format("activateInactiveQueue took %dms", System.currentTimeMillis() - t1));
+                                    }
+                                    // if no inactive queue could be activated, sleep until signaled for situation change,
+                                    // and start over.
+                                    if ((key = readyClassQueues.poll()) == null) {
+                                        queueReady.await();
+                                    }
+                                }
+                            } else {
+                                queueReady.await();
                             }
-                            //continue findaqueue;
-                            // fall through
-                        }
-                        }
-                        // nothing ready or readyable now.
-                        // wait until some queue becomes ready. this is the parking point
-                        // for ToeThreads. while this will block other ToeThreads's entering,
-                        // it should have no impact on performance because even if they are
-                        // allowed to enter findEligibleURI(), there would be no ready queue
-                        // to take and have to wait until a queue becomes ready.
-                        key = readyClassQueues.take();
-                        // key should not be null at this point.
+                        } while (key == null);
+                    } finally {
+                        readyLock.unlock();
                     }
                     readyQ = getQueueFor(key);
                     if(readyQ==null) {
@@ -808,9 +812,9 @@ implements Closeable,
             if (logger.isLoggable(Level.FINE))
                 logger.fine(String.format("findEligibleURI:%dms", System.currentTimeMillis() - t0));
             // XXX risk of put's blocking?
-            if (curi != null)
-                outbound.put(curi);
-//            return curi; 
+//            if (curi != null)
+//                outbound.put(curi);
+            return curi; 
     }
     
     // temporary debugging support
@@ -922,7 +926,8 @@ implements Closeable,
      */
     protected void updateHighestWaiting(int startFrom) {
         // probe for new highestWaiting
-        synchronized (readyClassQueues) {
+        readyLock.lock();
+        try {
         for(int precedenceKey : getInactiveQueuesByPrecedence().tailMap(startFrom).keySet()) {
             if(!getInactiveQueuesByPrecedence().get(precedenceKey).isEmpty()) {
                 highestPrecedenceWaiting = precedenceKey;
@@ -931,6 +936,8 @@ implements Closeable,
         }
         // nothing waiting
         highestPrecedenceWaiting = Integer.MAX_VALUE;
+        } finally {
+            readyLock.unlock();
         }
     }
 
@@ -947,7 +954,7 @@ implements Closeable,
             logger.fine("queue reenqueued: " +
                 wq.getClassKey());
         }
-        synchronized (readyClassQueues) {
+//        synchronized (readyClassQueues) {
             if(highestPrecedenceWaiting < wq.getPrecedence() 
                     || (wq.isOverBudget() && highestPrecedenceWaiting <= wq.getPrecedence())
                     || wq.getPrecedence() >= getPrecedenceFloor()) {
@@ -956,7 +963,7 @@ implements Closeable,
             } else {
                 readyQueue(wq);
             }
-        }
+//        }
     }
     
     /* (non-Javadoc)
@@ -978,6 +985,7 @@ implements Closeable,
             
             @Override
             public void process() {
+                synchronized (snoozedClassQueues) {
                 Iterator<DelayedWorkQueue> iterSnoozed = snoozedClassQueues.iterator();
                 while(iterSnoozed.hasNext()) {
                     WorkQueue queue = iterSnoozed.next().getWorkQueue(WorkQueueFrontier.this);
@@ -991,6 +999,7 @@ implements Closeable,
                     queue.setWakeTime(0);
                     reenqueueQueue(queue);
                     iterOverflow.remove(); 
+                }
                 }
             }
         });
@@ -1274,7 +1283,7 @@ implements Closeable,
         int retiredCount = getRetiredQueues().size();
         int exhaustedCount = allCount - activeCount - inactiveCount - retiredCount;
         int inCount = inbound.size();
-        int outCount = outbound.size();
+//        int outCount = outbound.size();
 
         Map<String,Object> map = new LinkedHashMap<String, Object>();
         map.put("totalQueues", allCount);
@@ -1288,7 +1297,7 @@ implements Closeable,
         map.put("exhaustedQueues", exhaustedCount);
         map.put("lastReachedState", lastReachedState);
         map.put("inboundCount", inCount);
-        map.put("outboundCount", outCount);
+//        map.put("outboundCount", outCount);
 
         return map;
     }
@@ -1311,7 +1320,7 @@ implements Closeable,
         int exhaustedCount = 
             allCount - activeCount - inactiveCount - retiredCount;
         int inCount = inbound.size();
-        int outCount = outbound.size();
+//        int outCount = outbound.size();
         State last = lastReachedState;
         w.print(allCount);
         w.print(" URI queues: ");
@@ -1331,7 +1340,7 @@ implements Closeable,
         w.print(" retired; ");
         w.print(exhaustedCount);
         w.print(" exhausted");
-        w.print(" ["+last+ ": "+inCount+" in, "+outCount+" out]");        
+        w.print(" ["+last+ ": "+inCount+" in]");        
         w.flush();
     }
 
@@ -1566,9 +1575,9 @@ implements Closeable,
         w.print("\n");
         
         int inCount = inbound.size();
-        int outCount = outbound.size();
+//        int outCount = outbound.size();
         State last = lastReachedState;
-        w.print("\n               Threadbound: "+last+ ": "+inCount+" in, "+outCount+" out");        
+        w.print("\n               Threadbound: "+last+ ": "+inCount+" in");        
         
         w.print("\n -----===== MANAGER THREAD =====-----\n");
         ToeThread.reportThread(managerThread, w);

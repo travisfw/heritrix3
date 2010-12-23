@@ -284,6 +284,8 @@ implements Checkpointable, BeanNameAware {
     public class Recover extends InEvent {
         @Override
         public void process() {
+            // TODO: add necessary locking - management thread no longer
+            // synchronize on Frontier.
             // restore WorkQueues to internal management queues
             for (String key : allQueues.keySet()) {
                 WorkQueue q = allQueues.get(key);
