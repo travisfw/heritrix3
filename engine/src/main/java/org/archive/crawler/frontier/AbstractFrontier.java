@@ -705,17 +705,15 @@ public abstract class AbstractFrontier
      */
     public void schedule(CrawlURI curi) {
         sheetOverlaysManager.applyOverlaysTo(curi);
-        if (curi.getClassKey() == null) {
-            // remedial processing
-            try {
-                KeyedProperties.loadOverridesFrom(curi);
+        try {
+            KeyedProperties.loadOverridesFrom(curi);
+            if (curi.getClassKey() == null)
+                // remedial processing
                 preparer.prepare(curi);
-            } finally {
-                KeyedProperties.clearOverridesFrom(curi); 
-            }
+            processScheduleIfUnique(curi);
+        } finally {
+            KeyedProperties.clearOverridesFrom(curi); 
         }
-//        enqueueOrDo(new ScheduleIfUnique(curi));
-        processScheduleIfUnique(curi);
     }
 
     /**
