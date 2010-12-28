@@ -23,6 +23,7 @@ import java.io.IOException;
 
 import javax.management.openmbean.CompositeData;
 
+import org.archive.crawler.datamodel.UriUniqFilter;
 import org.archive.crawler.frontier.FrontierJournal;
 import org.archive.modules.CrawlURI;
 import org.archive.modules.deciderules.DecideRule;
@@ -171,6 +172,13 @@ public interface Frontier extends Lifecycle, MultiReporter {
      * @return Number of discovered URIs.
      */
     public long discoveredUriCount();
+    
+    /**
+     * Number of URIs extracted and survived 'candidate' process, that is,
+     * those <i>add</i>-ed to {@link UriUniqFilter}.
+     * @return Number of candidate URIs.
+     */
+    public long candidateUriCount();
 
     /**
      * Number of URIs <i>queued</i> up and waiting for processing.

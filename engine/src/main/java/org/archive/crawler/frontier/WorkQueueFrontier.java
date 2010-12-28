@@ -1235,6 +1235,10 @@ implements Closeable,
     public long discoveredUriCount() {
         return (this.uriUniqFilter != null)? this.uriUniqFilter.count(): 0;
     }
+    
+    public long candidateUriCount() {
+        return (this.uriUniqFilter != null) ? this.uriUniqFilter.addedCount() : 0;
+    }
 
     /**
      * @param match String to  match.

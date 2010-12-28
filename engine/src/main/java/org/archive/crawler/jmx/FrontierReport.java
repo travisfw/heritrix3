@@ -42,6 +42,7 @@ public class FrontierReport extends ReportBean {
     private long finishedUriCount;
     private long downloadFailures;
     private long downloadDisregards;
+    private long candidateUriCount;
     
     private float congestionRatio;
     private long deepestUri;
@@ -70,6 +71,7 @@ public class FrontierReport extends ReportBean {
         this.finishedUriCount = frontier.finishedUriCount();
         this.downloadFailures = frontier.failedFetchCount();
         this.downloadDisregards = frontier.disregardedUriCount();
+        this.candidateUriCount = frontier.candidateUriCount();
         
         this.congestionRatio = frontier.congestionRatio();
         this.deepestUri = frontier.deepestUri();
@@ -135,6 +137,9 @@ public class FrontierReport extends ReportBean {
     }
     public long getDownloadDisregards() {
         return downloadDisregards;
+    }
+    public long getCandidateUriCount() {
+        return candidateUriCount;
     }
     public float getCongestionRatio() {
         return congestionRatio;
