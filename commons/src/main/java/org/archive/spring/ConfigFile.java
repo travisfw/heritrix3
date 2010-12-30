@@ -25,12 +25,17 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.regex.Pattern;
 
 import org.archive.io.ReadSource;
 
 /**
  * ConfigPath with added implication that it is an individual,
  * readable/writable File. 
+ * 
+ * Also supports http/https/ftp URLs for reading data over the network.
  */
 public class ConfigFile extends ConfigPath implements ReadSource, WriteTarget {
     private static final long serialVersionUID = 1L;
@@ -43,16 +48,30 @@ public class ConfigFile extends ConfigPath implements ReadSource, WriteTarget {
         super(name, path);
     }
 
+    protected boolean isURL() {
+        return Pattern.matches("(https?|ftp|file):", getPath());
+    }
     public Reader obtainReader() {
-        try {
-            if(!getFile().exists()) {
-                getFile().createNewFile();
+        if (isURL()) {
+            try {
+                URL url = new URL(getPath());
+                return new InputStreamReader(url.openStream(), "UTF-8");
+            } catch (MalformedURLException ex) {
+                throw new RuntimeException(ex);
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
             }
-            return new InputStreamReader(
-                    new FileInputStream(getFile()),
-                    "UTF-8");
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } else {
+            try {
+                if(!getFile().exists()) {
+                    getFile().createNewFile();
+                }
+                return new InputStreamReader(
+                        new FileInputStream(getFile()),
+                "UTF-8");
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -61,6 +80,10 @@ public class ConfigFile extends ConfigPath implements ReadSource, WriteTarget {
     }
     
     public Writer obtainWriter(boolean append) {
+        if (isURL()) {
+            // TODO: file: URL could be opened for writing.
+            throw new RuntimeException("URL cannot be opened for writing");
+        }
         try {
             return new OutputStreamWriter(
                     new FileOutputStream(getFile(), append),
