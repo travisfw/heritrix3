@@ -49,7 +49,9 @@ public class ConfigFile extends ConfigPath implements ReadSource, WriteTarget {
     }
 
     protected boolean isURL() {
-        return Pattern.matches("(https?|ftp|file):", getPath());
+        String path = getPath();
+        if (path == null) return false;
+        return Pattern.matches("(https?|ftp|file)://.*", path);
     }
     public Reader obtainReader() {
         if (isURL()) {
@@ -93,4 +95,9 @@ public class ConfigFile extends ConfigPath implements ReadSource, WriteTarget {
         }
     }
 
+    public String toString() {
+        if (isURL())
+            return getPath();
+        return super.toString();
+    }
 }

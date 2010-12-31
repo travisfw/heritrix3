@@ -452,7 +452,7 @@ public class JobResource extends BaseResource {
                     printLinkedFile(
                             pw, 
                             cp.getFile(), 
-                            cp.getFile().toString(),
+                            cp.toString(),
                             cp.getPath().endsWith(".log")?"format=paged&pos=-1&lines=-128&reverse=y":null);
                 } else {
                     pw.println("<i>unset</i>");

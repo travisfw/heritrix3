@@ -118,4 +118,8 @@ public class ConfigPath implements Serializable {
         }
         return this; 
     }
+    
+    public String toString() {
+        return getFile().toString();
+    }
 }
