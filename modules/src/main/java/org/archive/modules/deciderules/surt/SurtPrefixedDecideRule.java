@@ -214,9 +214,8 @@ implements
         // read SURTs from file, if appropriate
         String sourcePath = getSurtsSourceFile().getPath();        
         if (!StringUtils.isEmpty(sourcePath)) {
-            File source = getSurtsSourceFile().getFile();
             try {
-                fr = new FileReader(source);
+                fr = getSurtsSourceFile().obtainReader();
                 try {
                     surtPrefixes.importFromMixed(fr, true);
                 } finally {
