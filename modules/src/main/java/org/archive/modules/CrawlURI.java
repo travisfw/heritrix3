@@ -1753,7 +1753,9 @@ implements MultiReporter, Serializable, OverlayContext {
     }
     public String getCanonicalString() {
         if(StringUtils.isEmpty(canonicalString)){
-            System.err.println("not canonicalized "+this);
+            // it is normal for seeds to be non-canonicalized
+            if (!isSeed())
+                System.err.println("not canonicalized "+this);
             return getURI();
         }
         return canonicalString;
