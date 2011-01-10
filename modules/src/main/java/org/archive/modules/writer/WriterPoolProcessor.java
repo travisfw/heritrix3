@@ -232,6 +232,7 @@ implements Lifecycle, Checkpointable, WriterPoolSettings {
     private long totalBytesWritten = 0;
 
     private AtomicInteger serial = new AtomicInteger();
+    
     protected PerformanceStat stat;
     
 
@@ -389,7 +390,7 @@ implements Lifecycle, Checkpointable, WriterPoolSettings {
         this.pool = pool;
     }
 
-    protected long getTotalBytesWritten() {
+    public long getTotalBytesWritten() {
         return totalBytesWritten;
     }
 
@@ -454,5 +455,14 @@ implements Lifecycle, Checkpointable, WriterPoolSettings {
         sb.append(String.format("  process(5-min): min=%d max=%d avg=%.2f\n",
                 r.minProcess, r.maxProcess, r.getAverageProcess()));
         return sb.toString();
+    }
+    
+    public double getAverageWait() {
+        PerformanceStat.Record r = stat.getRecord();
+        return r.getAverageWait();
+    }
+    public double getAverageProcess() {
+        PerformanceStat.Record r = stat.getRecord();
+        return r.getAverageProcess();
     }
 }
