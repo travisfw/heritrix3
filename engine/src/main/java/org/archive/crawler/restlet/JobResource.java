@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.commons.lang.StringEscapeUtils;
@@ -449,11 +450,16 @@ public class JobResource extends BaseResource {
                 pw.println("<dt>"+cppp+": "+cp.getName()+"</dt>");
                 pw.println("<dd>");
                 if(!StringUtils.isEmpty(cp.getPath())) {
-                    printLinkedFile(
-                            pw, 
-                            cp.getFile(), 
-                            cp.toString(),
-                            cp.getPath().endsWith(".log")?"format=paged&pos=-1&lines=-128&reverse=y":null);
+                    String path = cp.toString();
+                    if (isURL(path)) {
+                        printLinkedResource(pw, cp.toString(), cp.toString(), null);
+                    } else {
+                        printLinkedFile(
+                                pw, 
+                                cp.getFile(), 
+                                cp.toString(),
+                                cp.getPath().endsWith(".log")?"format=paged&pos=-1&lines=-128&reverse=y":null);
+                    }
                 } else {
                     pw.println("<i>unset</i>");
                 }
@@ -481,6 +487,9 @@ public class JobResource extends BaseResource {
         pw.println("<hr/>");
     }
 
+    private boolean isURL(String p) {
+        return p != null && Pattern.matches("(https?|ftp|file)://.*", p);
+    }
     /**
      * Print a link to the given File
      * 
@@ -490,25 +499,36 @@ public class JobResource extends BaseResource {
     protected void printLinkedFile(PrintWriter pw, File f) { 
         printLinkedFile(pw,f,f.toString(),null);
     }
-    
     /**
-     * Print a link to the given File, using the given link text
-     * 
+     * Print a link to the give File {@code f}, using the given link text and query string.
      * @param pw PrintWriter
-     * @param f File
+     * @param f File to link to
+     * @param linktext link text
+     * @param queryString query string appended to href
      */
-    protected void printLinkedFile(PrintWriter pw, File f, String linktext, String queryString) {      
-        String relativePath = JobResource.getHrefPath(f,cj);
-        pw.println("<a href='" 
-                + relativePath 
-                + ((queryString==null) ? "" : "?" + queryString)
-                + "'>" 
-                + linktext +"</a>");
+    protected void printLinkedFile(PrintWriter pw, File f, String linktext, String queryString) {
+        String relativePath = getHrefPath(f, cj);
+        printLinkedResource(pw, relativePath, linktext, queryString);
         if(EDIT_FILTER.accept(f)) {
             pw.println("[<a href='" 
                     + relativePath 
                     +  "?format=textedit'>edit</a>]<br/>");
         }
+    }
+    /**
+     * Print a link to the given resource {@code f}, using the given link text
+     * 
+     * @param pw PrintWriter
+     * @param href resource locator, relative or full URL
+     * @param linktext link text
+     * @param queryString query string appended to href
+     */
+    protected void printLinkedResource(PrintWriter pw, String href, String linktext, String queryString) {
+        pw.println("<a href='" 
+                + href 
+                + ((queryString==null) ? "" : "?" + queryString)
+                + "'>" 
+                + linktext +"</a>");
     }
 
     /**

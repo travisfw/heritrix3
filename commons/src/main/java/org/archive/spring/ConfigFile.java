@@ -48,7 +48,7 @@ public class ConfigFile extends ConfigPath implements ReadSource, WriteTarget {
         super(name, path);
     }
 
-    protected boolean isURL() {
+    public boolean isURL() {
         String path = getPath();
         if (path == null) return false;
         return Pattern.matches("(https?|ftp|file)://.*", path);
