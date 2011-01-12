@@ -670,7 +670,7 @@ implements Closeable,
                     }
                     if(readyQ.getCount()==0) {
                         // readyQ is empty and ready: it's exhausted
-                        readyQ.noteDeactivated(); 
+                        readyQ.noteExhausted(); 
                         readyQ = null;
                         continue; 
                     }
@@ -754,7 +754,7 @@ implements Closeable,
                         // FIXME: tiny window here where queue could 
                         // receive new URI, be readied, fail not-in-process?
                         inProcessQueues.remove(readyQ);
-                        readyQ.noteDeactivated();
+                        readyQ.noteExhausted();
                         readyQ = null;
                         continue findauri;
                     }
@@ -791,17 +791,19 @@ implements Closeable,
     protected void checkFutures() {
 //        assert Thread.currentThread() == managerThread;
         // TODO: consider only checking this every set interval
-        synchronized (futureUris) {
-        Iterator<CrawlURI> iter = 
-            futureUris.headMap(System.currentTimeMillis())
-                .values().iterator();
-        while(iter.hasNext()) {
-            CrawlURI curi = iter.next();
-            curi.setRescheduleTime(-1); // unless again set elsewhere
-            iter.remove();
-            futureUriCount.decrementAndGet();
-            receive(curi);
-        }
+        if(!futureUris.isEmpty()) {
+            synchronized(futureUris) {
+                Iterator<CrawlURI> iter = 
+                    futureUris.headMap(System.currentTimeMillis())
+                        .values().iterator();
+                while(iter.hasNext()) {
+                    CrawlURI curi = iter.next();
+                    curi.setRescheduleTime(-1); // unless again set elsewhere
+                    iter.remove();
+                    futureUriCount.decrementAndGet();
+                    receive(curi);
+                }
+            }
         }
     }
     
