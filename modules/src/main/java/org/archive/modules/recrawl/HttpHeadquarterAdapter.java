@@ -19,8 +19,6 @@
 package org.archive.modules.recrawl;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
 import java.util.Iterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -56,7 +54,7 @@ public class HttpHeadquarterAdapter {
         this.httpClient = new HttpClient(hcm);
     }
 
-    private String baseURL = "http://localhost/crawlman";
+    private String baseURL = "http://localhost/hq";
     public void setBaseURL(String baseURL) {
         this.baseURL = baseURL;
     }
@@ -78,21 +76,24 @@ public class HttpHeadquarterAdapter {
         sb.append("discovered");
         return sb.toString();
     }
-    protected String getFeedURL(String localName) {
+    protected String getFeedURL(int nodeNo, int totalNodes) {
         StringBuilder sb = new StringBuilder(baseURL);
         if (!baseURL.endsWith("/"))
             sb.append("/");
         sb.append("feed");
         sb.append("?name=");
-        try {
-            sb.append(URLEncoder.encode(localName, "UTF-8"));
-        } catch (UnsupportedEncodingException ex) {
-            // should not happen
-            sb.append("0");
-        }
+        sb.append(nodeNo);
+        sb.append("&nodes=");
+        sb.append(totalNodes);
         return sb.toString();
     }
-    
+    /**
+     * send finished URI to the Headquaters.
+     * {@code content-digest}, {@code etag}, {@code last-modified} are sent along with the URI.
+     * As original values are obtained from {@link CrawlURI} for these, it is not necessary to
+     * copy these values in persistentDataMap before calling this method.
+     * @param uri CrawlURI to send
+     */
     public void finished(CrawlURI uri) {
         PostMethod post = new PostMethod(getFinishedURL());
         try {
@@ -131,7 +132,10 @@ public class HttpHeadquarterAdapter {
             post.releaseConnection();
         }
     }
-    
+    /**
+     * send URIs discovered by link extraction to the Headquarters.
+     * @param uri
+     */
     public void discovered(CrawlURI uri) {
         PostMethod post = new PostMethod(getDiscoveredURL());
         try {
@@ -141,6 +145,13 @@ public class HttpHeadquarterAdapter {
             UURI via = uri.getVia();
             if (via != null) {
                 post.addParameter("via", via.getURI());
+            }
+            LinkContext context = uri.getViaContext();
+            if (context != null) {
+                // only HTMLLinkContext is supported for now
+                if (context instanceof HTMLLinkContext) {
+                    post.addParameter("context", context.toString());
+                }
             }
             httpClient.executeMethod(post);
             String response = post.getResponseBodyAsString();
@@ -155,8 +166,8 @@ public class HttpHeadquarterAdapter {
         }
     }
     
-    public CrawlURI[] getCrawlURIs(String localName) {
-        GetMethod get = new GetMethod(getFeedURL(localName));
+    public CrawlURI[] getCrawlURIs(int nodeNo, int totalNodes) {
+        GetMethod get = new GetMethod(getFeedURL(nodeNo, totalNodes));
         try {
             httpClient.executeMethod(get);
             if (get.getStatusCode() == 200) {

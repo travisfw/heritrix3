@@ -25,6 +25,7 @@ import org.archive.crawler.datamodel.UriUniqFilter;
 import org.archive.crawler.datamodel.UriUniqFilter.CrawlUriReceiver;
 import org.archive.crawler.framework.Frontier;
 import org.archive.modules.CrawlURI;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * {@link OnlineCrawlMapper} communicates with central <i>crawl headquarter</i>
@@ -47,29 +48,43 @@ public class OnlineCrawlMapper implements UriUniqFilter {
     
     private HttpHeadquarterAdapter client;
     
-    private String localName;
+    private int nodeNo = 0;
+    
+    private int totalNodes = 1;
     
     protected CrawlUriReceiver receiver;
 
     public OnlineCrawlMapper() {
     }
     
+    @Autowired(required=true)
     public void setClient(HttpHeadquarterAdapter client) {
         this.client = client;
     }
     public void setDestination(CrawlUriReceiver receiver) {
         this.receiver = receiver;
     }
-    public String getLocalName() {
-        return localName;
+    
+    public int getNodeNo() {
+        return nodeNo;
     }
     /**
-     * name that uniquely identify this node within crawl job cluster.
-     * <p>most often a number, but can be arbitrary text</p>
-     * @param localName string
+     * number that uniquely identifies this node within crawl job cluster.
+     * @param nodeNo non-negative integer.
      */
-    public void setLocalName(String localName) {
-        this.localName = localName;
+    public void setNodeNo(int nodeNo) {
+        this.nodeNo = nodeNo;
+    }
+
+    public int getTotalNodes() {
+        return totalNodes;
+    }
+    /**
+     * total number of crawl job cluster nodes.
+     * @param totalNodes positive integer.
+     */
+    public void setTotalNodes(int totalNodes) {
+        this.totalNodes = totalNodes;
     }
 
     /**
@@ -92,7 +107,8 @@ public class OnlineCrawlMapper implements UriUniqFilter {
      */
     @Override
     public long requestFlush() {
-        CrawlURI[] uris = client.getCrawlURIs(localName);
+        int safeTotalNodes = totalNodes > 0 ? totalNodes : 1;
+        CrawlURI[] uris = client.getCrawlURIs(nodeNo, safeTotalNodes);
         long count = 0;
         for (CrawlURI uri : uris) {
             if (uri != null) {

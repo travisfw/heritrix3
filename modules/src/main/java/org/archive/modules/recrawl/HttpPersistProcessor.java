@@ -33,6 +33,7 @@ import org.archive.modules.CrawlURI;
 import org.archive.modules.Processor;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * HttpPersistProcessor notifies remote crawl manager of the completion of 
@@ -48,6 +49,7 @@ public class HttpPersistProcessor extends Processor {
     public HttpPersistProcessor() {
     }
     
+    @Autowired(required=true)
     public void setClient(HttpHeadquarterAdapter client) {
         this.client = client;
     }
