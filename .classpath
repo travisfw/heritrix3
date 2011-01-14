@@ -7,6 +7,7 @@
 	<classpathentry kind="src" path="commons/src/main/java"/>
 	<classpathentry kind="src" path="commons/src/test/java"/>
 	<classpathentry kind="src" path="dist/src/test/java"/>
+	<classpathentry kind="src" path="hq/src/main/java"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="var" path="M2_REPO/org/beanshell/bsh/2.0b5/bsh-2.0b5.jar"/>
 	<classpathentry kind="var" path="M2_REPO/org/mortbay/jetty/jetty/6.1.14/jetty-6.1.14.jar"/>
@@ -56,5 +57,7 @@
 	<classpathentry kind="var" path="M2_REPO/com/esotericsoftware/reflectasm/0.8/reflectasm-0.8.jar"/>
 	<classpathentry kind="var" path="M2_REPO/asm/asm/3.2/asm-3.2.jar"/>
 	<classpathentry kind="var" path="M2_REPO/com/google/guava/guava/r07/guava-r07.jar"/>
+	<classpathentry kind="var" path="M2_REPO/org/apache/httpcomponents/httpclient/4.0.3/httpclient-4.0.3.jar"/>
+	<classpathentry kind="var" path="M2_REPO/org/apache/httpcomponents/httpcore/4.0.1/httpcore-4.0.1.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

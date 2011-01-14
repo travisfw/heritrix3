@@ -140,6 +140,7 @@ Heritrix is the Internet Archive's open-source, extensible, web-scale,
     <module>modules</module>
     <module>engine</module>
     <module>dist</module>
+    <module>hq</module>
   </modules>
 
 

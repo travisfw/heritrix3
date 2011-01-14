@@ -16,15 +16,18 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.archive.modules.recrawl;
+package org.archive.modules.hq;
 
 import java.io.File;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.archive.crawler.datamodel.UriUniqFilter;
 import org.archive.crawler.datamodel.UriUniqFilter.CrawlUriReceiver;
 import org.archive.crawler.framework.Frontier;
+import org.archive.crawler.prefetch.FrontierPreparer;
 import org.archive.modules.CrawlURI;
+import org.archive.spring.KeyedProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -53,6 +56,8 @@ public class OnlineCrawlMapper implements UriUniqFilter {
     private int totalNodes = 1;
     
     protected CrawlUriReceiver receiver;
+    
+    protected FrontierPreparer preparer;
 
     public OnlineCrawlMapper() {
     }
@@ -63,6 +68,10 @@ public class OnlineCrawlMapper implements UriUniqFilter {
     }
     public void setDestination(CrawlUriReceiver receiver) {
         this.receiver = receiver;
+    }
+    @Autowired(required=true)
+    public void setPreparer(FrontierPreparer preparer) {
+        this.preparer = preparer;
     }
     
     public int getNodeNo() {
@@ -87,6 +96,24 @@ public class OnlineCrawlMapper implements UriUniqFilter {
         this.totalNodes = totalNodes;
     }
 
+    protected void schedule(CrawlURI curi) {
+        // WorkQueueFrontier.processScheduleAlways() (called from receive())
+        // assumes CrawlURI.classKey is non-null. schedule() calls prepare()
+        // if CrawlURI.classKey is null, but processScheduleAlways() has no such
+        // rescue. That rescue code should have been in processScheduleAlways()
+        // rather than in schedule().
+        if (curi.getClassKey() == null) {
+            KeyedProperties.loadOverridesFrom(curi);
+            try {
+                preparer.prepare(curi);
+            } finally {
+                KeyedProperties.clearOverridesFrom(curi);
+            }
+        }
+        if (logger.isLoggable(Level.FINE))
+            logger.fine("scheduling " + curi + " to receive()");
+        receiver.receive(curi);
+    }
     /**
      * {@inheritDoc}
      * this implementation makes no use of <code>key</code>.
@@ -95,8 +122,21 @@ public class OnlineCrawlMapper implements UriUniqFilter {
     @Override
     public void add(String key, CrawlURI curi) {
         // send all prerequisites (such as DNS lookup) to Frontier.
-        if (curi.isPrerequisite()) {
+        // CrawlUri.prerequisite flag is set to true by PreconditionEnforcer
+        // when it received dns: CrawlURI, not before dns: CrawlURI is scheduled.
+        // we cannot use it for distinguishing prerequisite. Less specific,
+        // but forceFetch (forceRevisit) is set for both dns: and robots.txt
+        // prerequisite CrawlURI. Possible danger is there are a few other places
+        // forceFetch is set to true.
+//        if (curi.isPrerequisite()) {
+        if (curi.forceFetch()) {
+            if (logger.isLoggable(Level.FINE))
+                logger.fine("sending " + curi + "to receive()");
+            //schedule(curi);
+            // at this point, CrawlURI has been initialized by
+            // FrontierPreparer. we don't need to do it again.
             receiver.receive(curi);
+            return;
         }
         // send all CrawlURI to the central server
         client.discovered(curi);
@@ -112,7 +152,7 @@ public class OnlineCrawlMapper implements UriUniqFilter {
         long count = 0;
         for (CrawlURI uri : uris) {
             if (uri != null) {
-                receiver.receive(uri);
+                schedule(uri);
                 ++count;
             }
         }
