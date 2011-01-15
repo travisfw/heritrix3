@@ -19,6 +19,7 @@
 package org.archive.modules.hq;
 
 import java.io.File;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -58,6 +59,8 @@ public class OnlineCrawlMapper implements UriUniqFilter {
     protected CrawlUriReceiver receiver;
     
     protected FrontierPreparer preparer;
+    
+    protected AtomicLong addedCount = new AtomicLong();
 
     public OnlineCrawlMapper() {
     }
@@ -121,6 +124,7 @@ public class OnlineCrawlMapper implements UriUniqFilter {
      */
     @Override
     public void add(String key, CrawlURI curi) {
+        addedCount.incrementAndGet();
         // send all prerequisites (such as DNS lookup) to Frontier.
         // CrawlUri.prerequisite flag is set to true by PreconditionEnforcer
         // when it received dns: CrawlURI, not before dns: CrawlURI is scheduled.
@@ -183,6 +187,11 @@ public class OnlineCrawlMapper implements UriUniqFilter {
         return 0;
     }
 
+    @Override
+    public long addedCount() {
+        return addedCount.get();
+    }
+    
     /**
      * {@inheritDoc}
      */
