@@ -826,14 +826,14 @@ implements Closeable,
                     }
                 }
             }
-                
-            if (curi == null) {
-                if(inProcessQueues.size()==0) {
-                    // Nothing was ready or in progress or imminent to wake; ensure 
-                    // any piled-up pending-scheduled URIs are considered
-                    uriUniqFilter.requestFlush();
-                }
-            
+            // there's no point doing this here.
+//            if (curi == null) {
+//                if(inProcessQueues.size()==0) {
+//                    // Nothing was ready or in progress or imminent to wake; ensure 
+//                    // any piled-up pending-scheduled URIs are considered
+//                    uriUniqFilter.requestFlush();
+//                }
+//            
                 // XXX this makes HQ-based crawl really slow
                 // if truly nothing ready, wait a moment before returning null
                 // so that loop in surrounding next() has a chance of getting something
@@ -845,7 +845,7 @@ implements Closeable,
 //                        // 
 //                    }
 //                }
-            }
+//            }
 //            if (logger.isLoggable(Level.FINE))
 //                logger.fine(String.format("findEligibleURI:%dms", System.currentTimeMillis() - t0));
             return curi; 
