@@ -122,7 +122,7 @@ public class HttpHeadquarterAdapter {
      * copy these values in persistentDataMap before calling this method.
      * @param uri CrawlURI to send
      */
-    public synchronized void finished(CrawlURI uri) {
+    public void finished(CrawlURI uri) {
         HttpPost post = new HttpPost(getFinishedURL());
         try {
             JSONObject data = new JSONObject();
@@ -166,11 +166,12 @@ public class HttpHeadquarterAdapter {
             logger.warning("error storing " + uri + ":" + ex);
         }
     }
+    
     /**
      * send URIs discovered by link extraction to the Headquarters.
      * @param uri
      */
-    public synchronized void discovered(CrawlURI uri) {
+    public void discovered(CrawlURI uri) {
         HttpPost post = new HttpPost(getDiscoveredURL());
         try {
             // the same set of parameters as output of HashCrawlMapper
