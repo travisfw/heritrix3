@@ -38,12 +38,23 @@ import org.apache.commons.lang.StringEscapeUtils;
 public class TextUtils {
     private static final String FIRSTWORD = "^([^\\s]*).*$";
 
-    private static final ThreadLocal<Map<String,Matcher>> TL_MATCHER_MAP
-     = new ThreadLocal<Map<String,Matcher>>() {
-        protected Map<String,Matcher> initialValue() {
-            return new HashMap<String,Matcher>(50);
+    private static class MatcherThreadLocal extends ThreadLocal<Matcher> {
+        private Pattern pattern;
+        public MatcherThreadLocal(Pattern pattern) {
+            this.pattern = pattern;
         }
-    };
+        protected Matcher initialValue() {
+            return pattern.matcher("");
+        }
+    }
+    private static final Map<String, MatcherThreadLocal> PATTERN_MAP = 
+        new HashMap<String, MatcherThreadLocal>();
+//    private static final ThreadLocal<Map<String,Matcher>> TL_MATCHER_MAP
+//     = new ThreadLocal<Map<String,Matcher>>() {
+//        protected Map<String,Matcher> initialValue() {
+//            return new HashMap<String,Matcher>(50);
+//        }
+//    };
 
     /**
      * Get a matcher object for a precompiled regex pattern.
@@ -66,20 +77,44 @@ public class TextUtils {
             throw new IllegalArgumentException("String 'pattern' must not be null");
         }
         input = new InterruptibleCharSequence(input);
-        final Map<String,Matcher> matchers = TL_MATCHER_MAP.get();
-        Matcher m = (Matcher)matchers.get(pattern);
-        if(m == null) {
-            m = Pattern.compile(pattern).matcher(input);
+        
+        MatcherThreadLocal tlv = null;
+        // TODO should use ConcurrentHashMap? even with 
+        // ConcurrentHashMap, multiple MatcherTheadLocal can be
+        // created if not synchronized. we could accept such waste
+        // in favor of less synchronization.
+        synchronized (PATTERN_MAP) {
+            tlv = PATTERN_MAP.get(pattern);
+            if (tlv == null) {
+                Pattern p = Pattern.compile(pattern);
+                tlv = new MatcherThreadLocal(p);
+                PATTERN_MAP.put(pattern, tlv);
+            }
+        }
+        Matcher m = tlv.get();
+        if (m == null) {
+            // many classes uses getMatcher() without matching recycleMatcher(),
+            // until we get all of those fixed, we need to support m == null case.
+            m = tlv.pattern.matcher(input);
         } else {
-            matchers.put(pattern,null);
+            tlv.set(null);
             m.reset(input);
         }
         return m;
     }
 
     public static void recycleMatcher(Matcher m) {
-        final Map<String,Matcher> matchers = TL_MATCHER_MAP.get();
-        matchers.put(m.pattern().pattern(),m);
+        MatcherThreadLocal tlv = null;
+        synchronized (PATTERN_MAP) {
+            tlv = PATTERN_MAP.get(m.pattern().pattern());
+            if (tlv == null) {
+                tlv = new MatcherThreadLocal(m.pattern());
+                PATTERN_MAP.put(m.pattern().pattern(), tlv);
+            }
+        }
+        tlv.set(m);
+//        final Map<String,Matcher> matchers = TL_MATCHER_MAP.get();
+//        matchers.put(m.pattern().pattern(),m);
     }
     
     /**
