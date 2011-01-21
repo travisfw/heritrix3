@@ -30,6 +30,7 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,7 +49,8 @@ public class TextUtils {
         }
     }
     private static final Map<String, MatcherThreadLocal> PATTERN_MAP = 
-        new HashMap<String, MatcherThreadLocal>();
+        new ConcurrentHashMap<String, MatcherThreadLocal>();
+//        new HashMap<String, MatcherThreadLocal>();
 //    private static final ThreadLocal<Map<String,Matcher>> TL_MATCHER_MAP
 //     = new ThreadLocal<Map<String,Matcher>>() {
 //        protected Map<String,Matcher> initialValue() {
@@ -83,14 +85,14 @@ public class TextUtils {
         // ConcurrentHashMap, multiple MatcherTheadLocal can be
         // created if not synchronized. we could accept such waste
         // in favor of less synchronization.
-        synchronized (PATTERN_MAP) {
+        //synchronized (PATTERN_MAP) {
             tlv = PATTERN_MAP.get(pattern);
             if (tlv == null) {
                 Pattern p = Pattern.compile(pattern);
                 tlv = new MatcherThreadLocal(p);
                 PATTERN_MAP.put(pattern, tlv);
             }
-        }
+        //}
         Matcher m = tlv.get();
         if (m == null) {
             // many classes uses getMatcher() without matching recycleMatcher(),
@@ -105,13 +107,13 @@ public class TextUtils {
 
     public static void recycleMatcher(Matcher m) {
         MatcherThreadLocal tlv = null;
-        synchronized (PATTERN_MAP) {
+        //synchronized (PATTERN_MAP) {
             tlv = PATTERN_MAP.get(m.pattern().pattern());
             if (tlv == null) {
                 tlv = new MatcherThreadLocal(m.pattern());
                 PATTERN_MAP.put(m.pattern().pattern(), tlv);
             }
-        }
+        //}
         tlv.set(m);
 //        final Map<String,Matcher> matchers = TL_MATCHER_MAP.get();
 //        matchers.put(m.pattern().pattern(),m);
