@@ -193,7 +193,7 @@ public class RegexHTMLLinkExtractor extends CharSequenceLinkExtractor {
             CharSequence value = cs.subSequence(start, end);
             if (attr.start(2) > -1) {
                 // HREF
-                LinkContext context = new HTMLLinkContext(element, attr.group(2));
+                LinkContext context = HTMLLinkContext.get(element, attr.group(2));
                 if(element.toString().equalsIgnoreCase(LINK)) {
                     // <LINK> elements treated as embeds (css, ico, etc)
                     processEmbed(value, context);
@@ -210,20 +210,20 @@ public class RegexHTMLLinkExtractor extends CharSequenceLinkExtractor {
                 }
             } else if (attr.start(3) > -1) {
                 // ACTION
-                LinkContext context = new HTMLLinkContext(element, attr.group(3));
+                LinkContext context = HTMLLinkContext.get(element, attr.group(3));
                 processLink(value, context);
             } else if (attr.start(4) > -1) {
                 // ON____
                 processScriptCode(value); // TODO: context?
             } else if (attr.start(5) > -1) {
                 // SRC etc.
-                LinkContext context = new HTMLLinkContext(element, attr.group(5));
+                LinkContext context = HTMLLinkContext.get(element, attr.group(5));
                 processEmbed(value, context);
             } else if (attr.start(6) > -1) {
                 // CODEBASE
                 // TODO: more HTML deescaping?
                 codebase = TextUtils.replaceAll(ESCAPED_AMP, value, AMP);
-                LinkContext context = new HTMLLinkContext(element,attr.group(6));
+                LinkContext context = HTMLLinkContext.get(element,attr.group(6));
                 processEmbed(codebase, context);
             } else if (attr.start(7) > -1) {
                 // CLASSID, DATA
@@ -257,7 +257,7 @@ public class RegexHTMLLinkExtractor extends CharSequenceLinkExtractor {
             } else if (attr.start(10) > -1) {
                 // VALUE
                 if(TextUtils.matches(LIKELY_URI_PATH, value)) {
-                    LinkContext context = new HTMLLinkContext(element, attr.group(10));
+                    LinkContext context = HTMLLinkContext.get(element, attr.group(10));
                     processLink(value, context);
                 }
 
@@ -290,7 +290,7 @@ public class RegexHTMLLinkExtractor extends CharSequenceLinkExtractor {
                 if (codebaseURI != null) {
                     res = codebaseURI.resolve(res).toString();
                 }
-                processEmbed(res, new HTMLLinkContext(element.toString())); // TODO: include attribute too
+                processEmbed(res, HTMLLinkContext.get(element.toString())); // TODO: include attribute too
             }
         } catch (URIException e) {
             extractErrorListener.noteExtractError(e,source,codebase);
@@ -404,7 +404,7 @@ public class RegexHTMLLinkExtractor extends CharSequenceLinkExtractor {
                 Link refreshLink = new Link(
                         source, 
                         UURIFactory.getInstance(base,refreshUri), 
-                        new HTMLLinkContext("meta", httpEquiv),
+                        HTMLLinkContext.get("meta", httpEquiv),
                         Hop.REFER);
                 next.addLast(refreshLink);
             } catch (URIException e) {
