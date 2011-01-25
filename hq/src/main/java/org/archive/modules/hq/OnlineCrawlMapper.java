@@ -19,6 +19,11 @@
 package org.archive.modules.hq;
 
 import java.io.File;
+import java.util.Arrays;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -30,6 +35,7 @@ import org.archive.crawler.prefetch.FrontierPreparer;
 import org.archive.modules.CrawlURI;
 import org.archive.spring.KeyedProperties;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.Lifecycle;
 
 /**
  * {@link OnlineCrawlMapper} communicates with central <i>crawl headquarter</i>
@@ -47,7 +53,7 @@ import org.springframework.beans.factory.annotation.Autowired;
  * @see HttpPersistProcessor
  * @contributor kenji
  */
-public class OnlineCrawlMapper implements UriUniqFilter {
+public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
     private static final Logger logger = Logger.getLogger(OnlineCrawlMapper.class.getName());
     
     private HttpHeadquarterAdapter client;
@@ -60,9 +66,57 @@ public class OnlineCrawlMapper implements UriUniqFilter {
     
     protected FrontierPreparer preparer;
     
-    protected AtomicLong addedCount = new AtomicLong();
+    protected final AtomicLong addedCount = new AtomicLong();
+    
+    protected final BlockingQueue<CrawlURI> discoveredQueue;
 
+    protected final AtomicBoolean discoveredSending = new AtomicBoolean(false);
+    
+    protected int discoveredBatchSize = 50;
+    
+    protected Thread discoveredFlushThread;
+    
+    /**
+     * maximum number of URIs to request in "feed" request.
+     * TODO: need to adjust based on the crawling speed for optimum performance.
+     */
+    protected int feedBatchSize = 80;
+    
+    protected volatile boolean running;
+    
+    public class Submitter implements Runnable {
+        @Override
+        public void run() {
+            CrawlURI[] bucket = new CrawlURI[discoveredBatchSize];
+            while (running || !discoveredQueue.isEmpty()) {
+                Arrays.fill(bucket, null);
+                for (int i = 0; i < bucket.length; i++) {
+                    // wait up to 5 seconds to fill up the bucket.
+                    try {
+                        CrawlURI curi = discoveredQueue.poll(5, TimeUnit.SECONDS);
+                        if (curi == null) break;
+                        bucket[i] = curi;
+                    } catch (InterruptedException ex) {
+                        break;
+                    }
+                }
+                if (bucket[0] != null) {
+                    long t0 = System.currentTimeMillis();
+                    if (logger.isLoggable(Level.FINE))
+                        logger.fine("submitting discovered");
+                    client.mdiscovered(bucket);
+                    if (logger.isLoggable(Level.FINE))
+                        logger.fine("submission done in "
+                                + (System.currentTimeMillis() - t0)
+                                + "ms, discoveredQueue.size=" + discoveredQueue.size());
+                }
+            }
+        }
+    }
+    
     public OnlineCrawlMapper() {
+        //this.discoveredQueue = new ConcurrentLinkedQueue<CrawlURI>();
+        this.discoveredQueue = new LinkedBlockingQueue<CrawlURI>(500);
     }
     
     @Autowired(required=true)
@@ -97,6 +151,13 @@ public class OnlineCrawlMapper implements UriUniqFilter {
      */
     public void setTotalNodes(int totalNodes) {
         this.totalNodes = totalNodes;
+    }
+    
+    public void setDiscoveredBatchSize(int discoveredBatchSize) {
+        this.discoveredBatchSize = discoveredBatchSize;
+    }
+    public int getDiscoveredBatchSize() {
+        return discoveredBatchSize;
     }
 
     protected void schedule(CrawlURI curi) {
@@ -142,22 +203,77 @@ public class OnlineCrawlMapper implements UriUniqFilter {
             receiver.receive(curi);
             return;
         }
+        // discard non-fetchable URIs
+        String scheme = curi.getUURI().getScheme();
+        if (!"http".equals(scheme) && !"https".equals(scheme) && !"ftp".equals(scheme)) {
+            if (logger.isLoggable(Level.FINE))
+                logger.fine("discarding non-fetchable URI:" + curi);
+            return;
+        }
         // send all CrawlURI to the central server
-        client.discovered(curi);
+        if (running) {
+            // flush thread is active. queue and leave.
+            try {
+                discoveredQueue.put(curi);
+            } catch (InterruptedException ex) {
+                // TODO: do not lose curi!
+            }
+//            final int size = discoveredQueue.size();
+//            if (size > discoveredBatchSize) {
+//                flushDiscovered(size);
+//            }
+        } else {
+            // paranoia? even after stopping we may receive discovered URIs due
+            // to the activity of other components being stopped. forward it to
+            // Headquarter one by one so that we don't lose it.
+            client.discovered(curi);
+        }
     }
+    
+//    protected void flushDiscovered(int n) {
+//        if (discoveredSending.compareAndSet(false, true)) {
+//            try {
+//                int size = discoveredQueue.size();
+//                while (size > n) {
+//                    int batch = size > discoveredBatchSize * 2 ? discoveredBatchSize * 2: size;
+//                    CrawlURI[] curis = new CrawlURI[batch];
+//                    for (int i = 0; i < batch; i++) {
+//                        if ((curis[i] = discoveredQueue.poll()) == null)
+//                            break;
+//                    }
+//                    client.mdiscovered(curis);
+//                    size = discoveredQueue.size();
+//                }
+//            } finally { 
+//                discoveredSending.set(false);
+//            }
+//        } else {
+//            logger.fine("other thread is submitting");
+//        }
+//    }
+    
+    private AtomicBoolean feedInProgress = new AtomicBoolean(false);
     
     /**
      * {@inheritDoc}
      */
     @Override
     public long requestFlush() {
-        int safeTotalNodes = totalNodes > 0 ? totalNodes : 1;
-        CrawlURI[] uris = client.getCrawlURIs(nodeNo, safeTotalNodes);
         long count = 0;
-        for (CrawlURI uri : uris) {
-            if (uri != null) {
-                schedule(uri);
-                ++count;
+        if (feedInProgress.compareAndSet(false, true)) {
+            int safeTotalNodes = totalNodes > 0 ? totalNodes : 1;
+            try {
+                if (logger.isLoggable(Level.FINE))
+                    logger.fine("running getCrawlURIs()");
+                CrawlURI[] uris = client.getCrawlURIs(nodeNo, safeTotalNodes, feedBatchSize);
+                for (CrawlURI uri : uris) {
+                    if (uri != null) {
+                        schedule(uri);
+                        ++count;
+                    }
+                }
+            } finally {
+                feedInProgress.set(false);
             }
         }
         return count;
@@ -228,6 +344,29 @@ public class OnlineCrawlMapper implements UriUniqFilter {
     public void setProfileLog(File logfile) {
         // TODO Auto-generated method stub
         // currently unimplemented.
+    }
+
+    // Lifecycle
+    
+    @Override
+    public boolean isRunning() {
+        return running;
+    }
+
+    @Override
+    public void start() {
+        if (running) return;
+        running = true;
+        discoveredFlushThread = new Thread(new Submitter());
+        discoveredFlushThread.start();
+    }
+
+    @Override
+    public void stop() {
+        running = false;
+//        // flush discovered queue
+//        flushDiscovered(discoveredQueue.size());
+        discoveredFlushThread = null;
     }
     
 }

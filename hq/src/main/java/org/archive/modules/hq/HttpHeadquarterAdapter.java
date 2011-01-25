@@ -19,6 +19,8 @@
 package org.archive.modules.hq;
 
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -26,6 +28,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.apache.commons.httpclient.URIException;
+import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
@@ -35,6 +38,7 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
@@ -71,6 +75,13 @@ public class HttpHeadquarterAdapter {
     private HttpClient httpClient1;
     private HttpClient httpClient2;
     
+    // URL cache
+    private String finishedURL = null;
+    private String discoveredURL = null;
+    private String multiDiscoveredURL = null;
+    
+    protected boolean useUrlEncodedForDiscovered = false;
+
     public HttpHeadquarterAdapter() {
         this.httpClient1 = new DefaultHttpClient();
         this.httpClient2 = new DefaultHttpClient();
@@ -79,26 +90,46 @@ public class HttpHeadquarterAdapter {
     private String baseURL = "http://localhost/hq";
     public void setBaseURL(String baseURL) {
         this.baseURL = baseURL;
+        // clear
+        finishedURL = null;
+        discoveredURL = null;
+        multiDiscoveredURL = null;
     }
     public String getBaseURL() {
         return baseURL;
     }
     
     protected String getFinishedURL() {
-        StringBuilder sb = new StringBuilder(baseURL);
-        if (!baseURL.endsWith("/"))
-            sb.append("/");
-        sb.append("finished");
-        return sb.toString();
+        if (finishedURL == null) {
+            StringBuilder sb = new StringBuilder(baseURL);
+            if (!baseURL.endsWith("/"))
+                sb.append("/");
+            sb.append("finished");
+            finishedURL = sb.toString();
+        }
+        return finishedURL;
     }
     protected String getDiscoveredURL() {
-        StringBuilder sb = new StringBuilder(baseURL);
-        if (!baseURL.endsWith("/"))
-            sb.append("/");
-        sb.append("discovered");
-        return sb.toString();
+        if (discoveredURL == null) {
+            StringBuilder sb = new StringBuilder(baseURL);
+            if (!baseURL.endsWith("/"))
+                sb.append("/");
+            sb.append("discovered");
+            discoveredURL = sb.toString();
+        }
+        return discoveredURL;
     }
-    protected String getFeedURL(int nodeNo, int totalNodes) {
+    protected String getMultiDiscoveredURL() {
+        if (multiDiscoveredURL == null) {
+            StringBuilder sb = new StringBuilder(baseURL);
+            if (!baseURL.endsWith("/"))
+                sb.append("/");
+            sb.append("mdiscovered");
+            discoveredURL = sb.toString();
+        }
+        return discoveredURL;
+    }
+    protected String getFeedURL(int nodeNo, int totalNodes, int nuris) {
         StringBuilder sb = new StringBuilder(baseURL);
         if (!baseURL.endsWith("/"))
             sb.append("/");
@@ -107,6 +138,7 @@ public class HttpHeadquarterAdapter {
         sb.append(nodeNo);
         sb.append("&nodes=");
         sb.append(totalNodes);
+        sb.append("&n=" + nuris);
         return sb.toString();
     }
     
@@ -152,6 +184,8 @@ public class HttpHeadquarterAdapter {
             post.setEntity(entity);
             String responseText = null;
             synchronized (httpClient1) {
+                if (logger.isLoggable(Level.FINE))
+                    logger.fine("invoking PUT " + post.getURI());
                 HttpResponse response = httpClient1.execute(post);
                 HttpEntity re = response.getEntity();
                 responseText = EntityUtils.toString(re);
@@ -166,9 +200,93 @@ public class HttpHeadquarterAdapter {
             logger.warning("error storing " + uri + ":" + ex);
         }
     }
+    /**
+     * send multiple discovered URIs to Headquarters in a batch
+     * @param uris array of CrawlURIs. null elements are allowed and simply ignored.
+     */
+    public void mdiscovered(CrawlURI[] uris) {
+        HttpPost post = new HttpPost(getMultiDiscoveredURL());
+        try {
+            JSONArray juris = new JSONArray();
+            for (CrawlURI uri : uris) {
+                // allow partially filled array
+                if (uri == null) continue;
+                JSONObject juri = new JSONObject();
+                juri.put("uri", uri.getURI());
+                juri.put("path", uri.getPathFromSeed());
+                UURI via = uri.getVia();
+                if (via != null) {
+                    juri.put("via", via.getURI());
+                }
+                LinkContext context = uri.getViaContext();
+                if (context != null) {
+                    // only HTMLLinkContext is supported for now
+                    if (context instanceof HTMLLinkContext) {
+                        juri.put("context", context.toString());
+                    }
+                }
+                juris.put(juri);
+            }
+            if (useUrlEncodedForDiscovered) {
+                List<NameValuePair> params = new ArrayList<NameValuePair>();
+                params.add(new BasicNameValuePair("u", juris.toString()));
+                post.setEntity(new UrlEncodedFormEntity(params));
+            } else {
+                // sending JSON text as entity - more compact.
+                // TODO: consider using BSON for even smaller payload
+                // TODO: reuse ByteArrayOutputStream instead of creating anew every time?
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                Writer w = new OutputStreamWriter(bytes, "UTF-8");
+                juris.write(w);
+                w.flush();
+                System.out.println("entity=" + bytes.toByteArray());
+                HttpEntity entity = new ByteArrayEntity(bytes.toByteArray());
+                post.setEntity(entity);
+                post.addHeader("content-type", "text/json");
+            }
+            if (logger.isLoggable(Level.FINE)) {
+                logger.fine("submitting " + juris.length() + " URIs to discovered");
+            }
+            String responseText = null;
+            synchronized (httpClient2) {
+                HttpResponse response = httpClient2.execute(post);
+                HttpEntity re = response.getEntity();
+                responseText = EntityUtils.toString(re);
+            }
+            if (logger.isLoggable(Level.FINE))
+                logger.fine("discovered([...])->" + responseText);
+            try {
+                JSONObject jres = new JSONObject(new JSONTokener(responseText));
+                int processed = jres.optInt("processed", 0);
+                //int scheduled = jres.optInt("scheduled", 0);
+                if (processed < uris.length) {
+                    logger.warning((uris.length - processed) + " of " + uris.length + " not processed");
+                }
+            } catch (JSONException ex) {
+                logger.warning("failed to parse mdiscovered response as JSON:" + responseText);
+            } 
+        } catch (JSONException ex) {
+            logger.warning(uris.length + " URIs not stored due to an error: " + ex);
+            for (CrawlURI uri : uris) {
+                logger.warning("  " + uri.toString());
+            }
+        } catch (ClientProtocolException ex) {
+            logger.warning(uris.length + " URIs not stored due to an error: " + ex);
+            for (CrawlURI uri : uris) {
+                logger.warning("  " + uri.toString());
+            }
+        } catch (IOException ex) {
+            logger.warning(uris.length + " URIs not stored due to an error: " + ex);
+            for (CrawlURI uri : uris) {
+                logger.warning("  " + uri.toString());
+            }            
+        }
+    }
     
     /**
      * send URIs discovered by link extraction to the Headquarters.
+     * Note: this single-submission interface is too slow for practical use and
+     * abandoned.
      * @param uri
      */
     public void discovered(CrawlURI uri) {
@@ -226,8 +344,8 @@ public class HttpHeadquarterAdapter {
         }
     }
     
-    public CrawlURI[] getCrawlURIs(int nodeNo, int totalNodes) {
-        String url = getFeedURL(nodeNo, totalNodes);
+    public CrawlURI[] getCrawlURIs(int nodeNo, int totalNodes, int nuris) {
+        String url = getFeedURL(nodeNo, totalNodes, nuris);
         HttpGet get = new HttpGet(url);
         try {
             String responseText = null;
