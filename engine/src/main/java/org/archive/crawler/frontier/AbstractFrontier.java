@@ -526,13 +526,13 @@ public abstract class AbstractFrontier
             // ready. this is the new parking point for ToeThreads.
             crawlable = findEligibleURI();
             if (logger.isLoggable(Level.FINE))
-                logger.fine(String.format("th:%s findEligibleURI() done in %dms",
-                    Thread.currentThread(), System.currentTimeMillis() - t1));
+                logger.fine(String.format("findEligibleURI() done in %dms",
+                    System.currentTimeMillis() - t1));
         } while (crawlable == null);
         
         if (logger.isLoggable(Level.FINE))
-            logger.fine(String.format("th:%s got URI in %dms",
-                    Thread.currentThread(), System.currentTimeMillis() - t0));
+            logger.fine(String.format("got URI in %dms",
+                    System.currentTimeMillis() - t0));
         return crawlable;
     }
 

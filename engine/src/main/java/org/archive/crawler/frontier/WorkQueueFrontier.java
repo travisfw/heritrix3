@@ -46,7 +46,6 @@ import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -405,6 +404,16 @@ implements Closeable,
                     // at precedence level (perhaps duplicate; if so that's handled elsewhere)
                     deactivateQueue(wq);
                 }
+                // if wq is not currently snoozed, signal sleeping ToeThreads that there's new CrawlURI
+                // available for crawling.
+                if (wq.wakeTime == 0) {
+                    readyLock.lock();
+                    try {
+                        queueReady.signal();
+                    } finally {
+                        readyLock.unlock();
+                    }
+                }
             }
         }
         // Update recovery log.
@@ -421,10 +430,6 @@ implements Closeable,
      * @param wq {@link WorkQueue} to become ready.
      */
     private void readyQueue(WorkQueue wq) {
-        if (logger.isLoggable(Level.FINE))
-            logger.fine("readyQueue");
-//        assert Thread.currentThread() == managerThread;
-
         try {
             //wq.setActive(this, true);
             // this will release ToeThreads waiting on readyClassQueues.
@@ -613,18 +618,12 @@ implements Closeable,
      * @see org.archive.crawler.framework.Frontier#next()
      */
     protected CrawlURI findEligibleURI() throws InterruptedException {
-        long t0 = System.currentTimeMillis();
-        if (logger.isLoggable(Level.FINE))
-            logger.fine(String.format("th:%s readyClassQueues.size=%d",
-                    Thread.currentThread(), readyClassQueues.size()));
+//        long t0 = System.currentTimeMillis();
 
             // wake any snoozed queues - this is now done by managementTasks()
             //wakeQueues();
             // consider rescheduled URIS
             checkFutures();
-            if (logger.isLoggable(Level.FINE))
-                logger.fine(String.format("after wake th:%s readyClassQueues.size=%d",
-                        Thread.currentThread(), readyClassQueues.size()));
 
             CrawlURI curi = null;
             // TODO: refactor to untangle these loops, early-exits, etc!
@@ -633,8 +632,8 @@ implements Closeable,
                 WorkQueue readyQ = null;
                 findaqueue: do {
                     String key = null;
-                    readyLock.lock();
-                    try {
+                    //readyLock.lock();
+                    //try {
                         do {
                             // XXX WorkQueueFrontier should not make direct reference
                             // to targetState
@@ -651,16 +650,34 @@ implements Closeable,
                                     // if no inactive queue could be activated, sleep until signaled for situation change,
                                     // and start over.
                                     if ((key = readyClassQueues.poll()) == null) {
+                                        readyLock.lock();
+                                        try {
+                                            if (logger.isLoggable(Level.FINE))
+                                                logger.fine("readyClassQueue empty, suspending");
                                         queueReady.await();
+                                        if (logger.isLoggable(Level.FINE))
+                                            logger.fine("resumed");
+                                        } finally {
+                                            readyLock.unlock();
+                                        }
                                     }
                                 }
                             } else {
+                                readyLock.lock();
+                                try {
+                                    if (logger.isLoggable(Level.FINE))
+                                        logger.fine("state " + targetState + ", suspending");
                                 queueReady.await();
+                                if (logger.isLoggable(Level.FINE))
+                                    logger.fine("resumed");
+                                } finally {
+                                    readyLock.unlock();
+                                }
                             }
                         } while (key == null);
-                    } finally {
-                        readyLock.unlock();
-                    }
+//                    } finally {
+//                        readyLock.unlock();
+//                    }
                     readyQ = getQueueFor(key);
                     if(readyQ==null) {
                          // readyQ key wasn't in all queues: unexpected
@@ -743,9 +760,6 @@ implements Closeable,
                     curi.setClassKey(currentQueueKey);
                     decrementQueuedCount(1);
                     curi.setHolderKey(null);
-                    // probably it's better to do doOrEnqueue(new ScheduleAlways(curi)),
-                    // or receive(curi), because sendToQueue(curi) will now call findEligibleURI()
-                    // when curi is sent to ready queue.
                     sendToQueue(curi);
                     if(readyQ.getCount()==0) {
                         // readyQ is empty and ready: it's exhausted
@@ -780,8 +794,8 @@ implements Closeable,
 //                    }
 //                }
             }
-            if (logger.isLoggable(Level.FINE))
-                logger.fine(String.format("findEligibleURI:%dms", System.currentTimeMillis() - t0));
+//            if (logger.isLoggable(Level.FINE))
+//                logger.fine(String.format("findEligibleURI:%dms", System.currentTimeMillis() - t0));
             return curi; 
     }
     
@@ -811,9 +825,11 @@ implements Closeable,
      * Activate an inactive queue, if any are available. 
      */
     protected boolean activateInactiveQueue() {
-
         for( Entry<Integer, Queue<String>> entry : getInactiveQueuesByPrecedence().entrySet()) {
-            for (String key = entry.getValue().poll(); key!=null; key = entry.getValue().poll() ) {
+            //logger.fine("th:" + Thread.currentThread().getName() + " AIQ:" + entry.getKey());
+            Queue<String> iq = entry.getValue();
+            for (String key = iq.poll(); key!=null; key = iq.poll() ) {
+                //logger.fine("th:" + Thread.currentThread().getName() + " AIQ:" + key);
 //                inactiveByClass.remove(key);
                 int expectedPrecedence = entry.getKey();
                 if(key!=null) {
@@ -833,7 +849,9 @@ implements Closeable,
                 }
             }
         }
-
+        logger.fine("th:" + Thread.currentThread().getName()
+                + " AIQ:failed to activate (queue.empty="
+                + getInactiveQueuesByPrecedence().isEmpty() + ")");
         return false;
     }
 
@@ -926,7 +944,6 @@ implements Closeable,
      * @return return time this method should be run. 0 if there's no snoozed queue.
      */
     protected /*synchronized*/ long wakeQueues() {
-        synchronized (snoozedClassQueues) {
         DelayedWorkQueue waked; 
         while((waked = snoozedClassQueues.poll())!=null) {
             WorkQueue queue = waked.getWorkQueue(this);
@@ -953,7 +970,6 @@ implements Closeable,
             return head.getWakeTime();
         } else {
             return Long.MAX_VALUE;
-        }
         }
     }
     
@@ -1098,26 +1114,29 @@ implements Closeable,
      */
     private void snoozeQueue(WorkQueue wq, long now, long delay_ms) {
         if (logger.isLoggable(Level.FINE))
-            logger.fine("snoozing " + wq + " for " + delay_ms + "ms");
+            logger.fine("snoozing " + wq.getClassKey() + " for " + delay_ms + "ms");
         long nextTime = now + delay_ms;
         wq.setWakeTime(nextTime);
         DelayedWorkQueue dq = new DelayedWorkQueue(wq);
-        // management thread may be touching snoozedClassQueue concurrently in wakeQueues
-        synchronized (snoozedClassQueues) {
-            if(snoozedClassQueues.size()<MAX_SNOOZED_IN_MEMORY) {
-                snoozedClassQueues.add(dq);
-                // let management thread (possibly waiting on inbound queue) know
-                // that snoozed queues have changed and perhaps it needs to recalculate
-                // sleep time. this implementation is pretty bad because enqueue() would
-                // block when inbound queue is full (hopefully it won't happen too often).
-                // simple signaling would be sufficient.
-                // this could be much simplified if we package snoozedClassQueues,
-                // snoozedOverflow, and management thread in one class.
-                enqueue(NOOP);
-            } else {
+        // although management thread may be touching snoozedClassQueue concurrently in wakeQueues(),
+        // it only removes element. So following code needs no additional synchronization.
+        if(snoozedClassQueues.size()<MAX_SNOOZED_IN_MEMORY) {
+            snoozedClassQueues.add(dq);
+            // let management thread (possibly waiting on inbound queue) know
+            // that snoozed queues have changed and perhaps it needs to recalculate
+            // sleep time. this implementation is pretty bad because enqueue() would
+            // block when inbound queue is full (hopefully it won't happen too often).
+            // simple signaling would be sufficient.
+            // this could be much simplified if we package snoozedClassQueues,
+            // snoozedOverflow, and management thread in one class.
+            enqueue(NOOP);
+        } else {
+            // ... but this synchronization is required here because wakeQueues() uses an Iterator
+            // to loop over elements. Concurrent modification would cause IllegalStateException.
+            synchronized (snoozedOverflow) {
                 snoozedOverflow.put(nextTime, dq);
-                snoozedOverflowCount.incrementAndGet();
             }
+            snoozedOverflowCount.incrementAndGet();
         }
     }
 
