@@ -399,7 +399,8 @@ public abstract class AbstractFrontier
                             snoozeLock.lock();
                             try {
                                 // suspend indefinitely until resumed by requestState()
-                                snoozeUpdated.await();
+                                if (targetState == State.PAUSE)
+                                    snoozeUpdated.await();
                             } finally {
                                 snoozeLock.unlock();
                             }
