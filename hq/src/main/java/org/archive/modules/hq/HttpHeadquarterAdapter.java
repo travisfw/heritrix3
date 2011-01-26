@@ -385,7 +385,7 @@ public class HttpHeadquarterAdapter {
                 LinkContext viaContext = null;
                 if (context != null && context.length() > 0) {
                     // ref. CrawlURI#fromHopsViaString(String)
-                    viaContext = new HTMLLinkContext(context);
+                    viaContext = HTMLLinkContext.get(context);
                 }
                 CrawlURI curi = new CrawlURI(uuri, path, viaUuri, viaContext);
                 // content-digest and last-modified comes in data object.
