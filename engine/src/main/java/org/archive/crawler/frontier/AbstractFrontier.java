@@ -42,8 +42,6 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
@@ -158,15 +156,6 @@ public abstract class AbstractFrontier
         kp.put("independentExtractors", enabled);
     }
     
-    /** inbound updates: URIs to be scheduled, finished; requested state changes */
-    protected BlockingQueue<InEvent> inbound;
-    public BlockingQueue<InEvent> getInbound() {
-        return inbound;
-    }
-    public void setInbound(BlockingQueue<InEvent> inbound) {
-        this.inbound = inbound;
-    }
-
     public boolean isRunning() {
         return managerThread!=null && managerThread.isAlive();
     }
@@ -290,11 +279,10 @@ public abstract class AbstractFrontier
     public AbstractFrontier() {
         this.readyLock = new ReentrantLock();
         this.queueReady = this.readyLock.newCondition();
+        this.snoozeLock = new ReentrantLock();
+        this.snoozeUpdated = this.snoozeLock.newCondition();
     }
 
-    /** reusable no-op inbound event, to force reeval of state/eligible URIs */
-    protected InEvent NOOP = new InEvent() { public void process() {} };
-    
 //    /** 
 //     * lock to allow holding all worker ToeThreads from taking URIs already
 //     * on the outbound queue; they acquire read permission before take()ing;
@@ -340,9 +328,6 @@ public abstract class AbstractFrontier
             throw new IllegalStateException(e);
         }
         
-        if(inbound==null) {
-            inbound = new ArrayBlockingQueue<InEvent>(4000, true);
-        }
         pause();
         startManagerThread();
     }
@@ -371,44 +356,23 @@ public abstract class AbstractFrontier
                         queueReady.signalAll();
                         readyLock.unlock();
                         reachedState(State.RUN);
-                        // fill to-do 'on-deck' queue
-                        // now that ToeThreads are also calling findEligibleURI(), there's no longer
-                        // a good reason for management thread to run fillOutbound(). Currently
-                        // findEligibleURI() is a synchronized method and fillOutbound() will take
-                        // pretty long to finish due to high contention with ToeThreads. Not processing
-                        // inbound queues that long results in ToeThread's running drainInbound()
-                        // instead, which in turn often results in occupying ToeThreads for more than 10
-                        // seconds. findEligibleURI() usually takes <2ms - so let ToeThreads do it
-                        // (that means, outbound queue is no longer necessary). management thread should
-                        // take responsibility of waking up snoozed queues, instead.
-                        //fillOutbound();
-                        // process discovered and finished URIs
-                        
-                        // we don't need non-blocking drainInbound() here - simple blocking loop will do.
-//                        drainInbound();
                         do {
-                            long delay = wakeQueues() - System.currentTimeMillis();
-                            if (delay < 0) {
-                                // already past next wake time.
-                                delay = 0;
+                            long nextWake = wakeQueues();
+                            long delay = nextWake - System.currentTimeMillis();
+                            if (delay > 0) {
+                                if (logger.isLoggable(Level.FINE))
+                                    logger.fine("suspending for " + delay + "ms");
+                                snoozeLock.lock();
+                                try {
+                                    nextWakeTime = nextWake;
+                                    snoozeUpdated.await(delay, TimeUnit.MILLISECONDS);
+                                } finally {
+                                    snoozeLock.unlock();
+                                }
+                                if (logger.isLoggable(Level.FINE))
+                                    logger.fine("resumed");
                             }
-                            if (logger.isLoggable(Level.FINE))
-                                logger.fine("polling events for " + delay + "ms, queuedUriCount=" + queuedUriCount());
-                            InEvent ev = inbound.poll(delay, TimeUnit.MILLISECONDS);
-                            if (logger.isLoggable(Level.FINE))
-                                logger.fine("inbound.poll() returned ev=" + ev);
-                            if (ev != null) {
-//                                synchronized(this) {
-                                    long t0 = System.currentTimeMillis();
-                                    if (logger.isLoggable(Level.FINE))
-                                        logger.fine("running ev.process()");
-                                    ev.process();
-                                    if (logger.isLoggable(Level.FINE))
-                                        logger.fine("ev.process() completed in " + (System.currentTimeMillis() - t0) + "ms, "
-                                                + "queuedUriCount=" + queuedUriCount());
-//                                }
-                            }
-                            if (isEmpty()) {
+                            if (targetState == State.RUN && isEmpty()) {
                                 // pause when frontier exhausted; controller will
                                 // determine if this means to finish or not
                                 targetState = State.PAUSE;
@@ -421,7 +385,6 @@ public abstract class AbstractFrontier
                         // pausing
                         // prevent all outbound takes
 //                        outboundLock.writeLock().lock();
-                        // process all inbound
                         do {
                             if (getInProcessCount() == 0) {
 //                            if (outbound.size() == getInProcessCount()) {
@@ -433,18 +396,18 @@ public abstract class AbstractFrontier
                             // use poll with timeout to deal with status transition
                             // without inbound message (such as thread death while
                             // processing).
-                            InEvent ev = inbound.poll(1L, TimeUnit.SECONDS);
-                            if (ev != null) {
-//                                synchronized(this) {
-                                    ev.process();
-//                                }
+                            snoozeLock.lock();
+                            try {
+                                // suspend indefinitely until resumed by requestState()
+                                snoozeUpdated.await();
+                            } finally {
+                                snoozeLock.unlock();
                             }
                         } while (targetState == State.PAUSE);
                         break;
                     case FINISH:
                         // prevent all outbound takes
 //                        outboundLock.writeLock().lock();
-                        // process all inbound
                         // execution of finalTasks() must wait until all ToeThreads
                         // finish current processing. TODO: use of sleep() is ugly.
                         while (getInProcessCount()>0) {
@@ -460,10 +423,11 @@ public abstract class AbstractFrontier
                     // log, try to pause, continue
                     logger.log(Level.SEVERE,"",e);
                     if(targetState!=State.PAUSE && targetState!=State.FINISH) {
-                        // management thread should never post state change request
-                        // through inbound queue - if inbound queue is full, it falls
-                        // into deadlock, because nobody else can clear up inbound queue.
-                        requestState(State.PAUSE);
+                        // do not use requestState(), which signals management thread
+                        // through snoozeUpdated Condition of state change - waste of
+                        // CPU cycles.
+                        //requestState(State.PAUSE);
+                        targetState = State.PAUSE;
                     }
                 }
             }
@@ -597,6 +561,7 @@ public abstract class AbstractFrontier
      * queue. If any queues are waiting out politeness/retry delays ('snoozed'),
      * the maximum wait should be no longer than the shortest sch delay. 
      * @return maximum time to wait, in milliseconds
+     * @obsoleted this parameter has no effect.
      */
     abstract protected long getMaxInWait();
     
@@ -682,6 +647,9 @@ public abstract class AbstractFrontier
      */
     public void requestState(State target) {
         targetState = target;
+        snoozeLock.lock();
+        snoozeUpdated.signal();
+        snoozeLock.unlock();
     }
     
     public void pause() {
@@ -1230,29 +1198,6 @@ public abstract class AbstractFrontier
         reportTo(null, writer);
     }
     
-    /**
-     * Arrange for the given InEvent to be done by the managerThread, via
-     * enqueueing with other events if possible, but directly if not possible
-     * and this is the managerThread.
-     * TODO: this method is only used for sending NOOP message to management
-     * thread to wake it up. refactor.
-     * @param ev InEvent to be done
-     */
-    protected void enqueue(InEvent ev) {
-            try {
-                inbound.put(ev);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-    }
-    
-    /**
-     * An event/update for the managerThread to process from the inbound queue.
-     */
-    public abstract class InEvent {
-        abstract public void process();
-    }        
-
     public void onApplicationEvent(ApplicationEvent event) {
         if(event instanceof CrawlStateEvent) {
             CrawlStateEvent event1 = (CrawlStateEvent)event;
@@ -1275,7 +1220,28 @@ public abstract class AbstractFrontier
     protected ThreadLocal<CrawlURI> dispositionPending = new ThreadLocal<CrawlURI>();
 
     protected Lock readyLock;
-    protected Condition queueReady; 
+    protected Condition queueReady;
+    
+    protected Lock snoozeLock;
+    protected Condition snoozeUpdated;
+    private long nextWakeTime = Long.MAX_VALUE;
+    
+    /**
+     * call this method to notify management thread of a queue being
+     * snoozed. management thread will wake up and recalculate next wake up
+     * time if necessary.
+     * @param wakeTime
+     */
+    protected void updateSnoozeTime(long wakeTime) {
+        if (wakeTime < nextWakeTime) {
+            snoozeLock.lock();
+            try {
+                snoozeUpdated.signal();
+            } finally {
+                snoozeLock.unlock();
+            }
+        }
+    }
     
     /* (non-Javadoc)
      * @see org.archive.crawler.framework.Frontier#beginDisposition(org.archive.modules.CrawlURI)

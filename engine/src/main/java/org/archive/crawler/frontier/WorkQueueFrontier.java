@@ -943,7 +943,7 @@ implements Closeable,
      * access to objects must be synchronized, but we must not make this method synchronized.</p>
      * @return return time this method should be run. 0 if there's no snoozed queue.
      */
-    protected /*synchronized*/ long wakeQueues() {
+    protected long wakeQueues() {
         DelayedWorkQueue waked; 
         while((waked = snoozedClassQueues.poll())!=null) {
             WorkQueue queue = waked.getWorkQueue(this);
@@ -965,6 +965,7 @@ implements Closeable,
                 }
             }
         }
+        // XXX we need to take queues in snoozedOverflow into account
         DelayedWorkQueue head = snoozedClassQueues.peek();
         if (head != null) {
             return head.getWakeTime();
@@ -990,7 +991,7 @@ implements Closeable,
      */
     protected void processFinish(CrawlURI curi) {
         if (logger.isLoggable(Level.FINE))
-            logger.fine("processFinish");
+            logger.fine("processFinish " + curi.getURI());
 //        assert Thread.currentThread() == managerThread;
         
         long now = System.currentTimeMillis();
@@ -1122,14 +1123,6 @@ implements Closeable,
         // it only removes element. So following code needs no additional synchronization.
         if(snoozedClassQueues.size()<MAX_SNOOZED_IN_MEMORY) {
             snoozedClassQueues.add(dq);
-            // let management thread (possibly waiting on inbound queue) know
-            // that snoozed queues have changed and perhaps it needs to recalculate
-            // sleep time. this implementation is pretty bad because enqueue() would
-            // block when inbound queue is full (hopefully it won't happen too often).
-            // simple signaling would be sufficient.
-            // this could be much simplified if we package snoozedClassQueues,
-            // snoozedOverflow, and management thread in one class.
-            enqueue(NOOP);
         } else {
             // ... but this synchronization is required here because wakeQueues() uses an Iterator
             // to loop over elements. Concurrent modification would cause IllegalStateException.
@@ -1138,6 +1131,10 @@ implements Closeable,
             }
             snoozedOverflowCount.incrementAndGet();
         }
+        // let management thread (possibly waiting on Condition) know that
+        // snoozed queues have been changed and perhaps it needs to recalculate
+        // sleep time.
+        updateSnoozeTime(nextTime);
     }
 
     /**
@@ -1210,7 +1207,6 @@ implements Closeable,
         int ineligibleCount = getTotalIneligibleInactiveQueues();
         int retiredCount = getRetiredQueues().size();
         int exhaustedCount = allCount - activeCount - inactiveCount - retiredCount;
-        int inCount = inbound.size();
 
         Map<String,Object> map = new LinkedHashMap<String, Object>();
         map.put("totalQueues", allCount);
@@ -1223,7 +1219,6 @@ implements Closeable,
         map.put("retiredQueues", retiredCount);
         map.put("exhaustedQueues", exhaustedCount);
         map.put("lastReachedState", lastReachedState);
-        map.put("inboundCount", inCount);
 
         return map;
     }
@@ -1245,7 +1240,6 @@ implements Closeable,
         int retiredCount = getRetiredQueues().size();
         int exhaustedCount = 
             allCount - activeCount - inactiveCount - retiredCount;
-        int inCount = inbound.size();
         State last = lastReachedState;
         w.print(last);
         w.print(" - ");
@@ -1267,7 +1261,7 @@ implements Closeable,
         w.print(" retired; ");
         w.print(exhaustedCount);
         w.print(" exhausted");
-        w.print(" ["+last+ ": "+inCount+" in]");        
+//        w.print(" ["+last+ ": "+inCount+" in]");        
         w.flush();
     }
 
@@ -1500,9 +1494,8 @@ implements Closeable,
         w.print(exhaustedCount);
         w.print("\n");
         
-        int inCount = inbound.size();
         State last = lastReachedState;
-        w.print("\n             Last state: "+last + ": " + inCount + " in");        
+        w.print("\n             Last state: "+last);        
         
         w.print("\n -----===== MANAGER THREAD =====-----\n");
         ToeThread.reportThread(managerThread, w);
