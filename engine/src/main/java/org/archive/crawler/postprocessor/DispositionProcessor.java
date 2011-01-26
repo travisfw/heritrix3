@@ -231,6 +231,11 @@ public class DispositionProcessor extends Processor {
      */
     protected long politenessDelayFor(CrawlURI curi) {
         long durationToWait = 0;
+        // we don't need to wait after DNS query 
+        if ("dns".equals(curi.getUURI().getScheme())) {
+            return 0;
+        }
+        
         Map<String,Object> cdata = curi.getData();
         if (cdata.containsKey(A_FETCH_BEGAN_TIME)
                 && cdata.containsKey(A_FETCH_COMPLETED_TIME)) {
