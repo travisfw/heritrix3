@@ -71,13 +71,15 @@ import org.json.JSONTokener;
 public class HttpHeadquarterAdapter {
     private static final Logger logger = Logger.getLogger(HttpHeadquarterAdapter.class.getName());
 
-    
+    // for feed
     private HttpClient httpClient1;
+    // for finished and discovered
     private HttpClient httpClient2;
     
     // URL cache
     private String finishedURL = null;
     private String discoveredURL = null;
+    private String multiFinishedURL = null;
     private String multiDiscoveredURL = null;
     
     protected boolean useUrlEncodedForDiscovered = false;
@@ -119,15 +121,25 @@ public class HttpHeadquarterAdapter {
         }
         return discoveredURL;
     }
+    protected String getMultiFinishedURL() {
+        if (multiFinishedURL == null) {
+            StringBuilder sb = new StringBuilder(baseURL);
+            if (!baseURL.endsWith("/"))
+                sb.append("/");
+            sb.append("mfinished");
+            multiFinishedURL = sb.toString();
+        }
+        return multiFinishedURL;
+    }
     protected String getMultiDiscoveredURL() {
         if (multiDiscoveredURL == null) {
             StringBuilder sb = new StringBuilder(baseURL);
             if (!baseURL.endsWith("/"))
                 sb.append("/");
             sb.append("mdiscovered");
-            discoveredURL = sb.toString();
+            multiDiscoveredURL = sb.toString();
         }
-        return discoveredURL;
+        return multiDiscoveredURL;
     }
     protected String getFeedURL(int nodeNo, int totalNodes, int nuris) {
         StringBuilder sb = new StringBuilder(baseURL);
@@ -147,6 +159,89 @@ public class HttpHeadquarterAdapter {
         return header != null ? header.getValue() : null;
     }
     
+    public void mfinished(CrawlURI[] uris) {
+        HttpPost post = new HttpPost(getMultiFinishedURL());
+        try {
+            JSONArray juris = new JSONArray();
+            for (CrawlURI uri : uris) {
+                // allow partially filled array
+                if (uri == null) continue;
+                JSONObject juri = new JSONObject();
+                juri.put("uri", uri.getURI());
+                juri.put("data", getFinishedData(uri));
+                juris.put(juri);
+            }
+            // sending JSON text as entity for compactness
+            // TODO: consider using BSON for even smaller payload
+            // TODO: reuse ByteArrayOutputStream instead of creating anew every time?
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            Writer w = new OutputStreamWriter(bytes, "UTF-8");
+            juris.write(w);
+            w.flush();
+            HttpEntity entity = new ByteArrayEntity(bytes.toByteArray());
+            post.setEntity(entity);
+            post.addHeader("content-type", "text/json");
+            if (logger.isLoggable(Level.FINE)) {
+                logger.fine("submitting " + juris.length() + " URIs to mfinished");
+            }
+            String responseText = null;
+            synchronized (httpClient2) {
+                HttpResponse response = httpClient2.execute(post);
+                HttpEntity re = response.getEntity();
+                responseText = EntityUtils.toString(re);
+            }
+            if (logger.isLoggable(Level.FINE))
+                logger.fine("mfinished([...])->" + responseText);
+            try {
+                JSONObject jres = new JSONObject(new JSONTokener(responseText));
+                int processed = jres.optInt("processed", 0);
+                //int scheduled = jres.optInt("scheduled", 0);
+                if (processed < juris.length()) {
+                    logger.warning((uris.length - processed) + " of " + juris.length() + " not processed");
+                }
+            } catch (JSONException ex) {
+                logger.warning("failed to parse mfinished response as JSON:" + responseText);
+            } 
+        } catch (JSONException ex) {
+            logger.warning(uris.length + " URIs not stored due to an error: " + ex);
+            for (CrawlURI uri : uris) {
+                logger.warning("  " + uri.toString());
+            }
+        } catch (ClientProtocolException ex) {
+            logger.warning(uris.length + " URIs not stored due to an error: " + ex);
+            for (CrawlURI uri : uris) {
+                logger.warning("  " + uri.toString());
+            }
+        } catch (IOException ex) {
+            logger.warning(uris.length + " URIs not stored due to an error: " + ex);
+            for (CrawlURI uri : uris) {
+                logger.warning("  " + uri.toString());
+            }            
+        }
+    }
+    private JSONObject getFinishedData(CrawlURI uri) throws JSONException {
+        JSONObject data = new JSONObject();
+        // not using CrawlURI#getPersistentDataMap() for efficiency
+        // it does not include content-digest and last-modified anyway,
+        // unless FetchHistoryProcessor is applied prior to this processor.
+        // as we're only interested in content-digest, etag, and last-modified, 
+        // use of FetchHistoryProcessor seems expensive.
+        data.put("status", uri.getFetchStatus());
+        String digest = uri.getContentDigestSchemeString();
+        if (digest != null) {
+            data.put(RecrawlAttributeConstants.A_CONTENT_DIGEST, digest);
+        }
+        org.apache.commons.httpclient.HttpMethod method = uri.getHttpMethod();
+        String etag = getHeaderValue(method, RecrawlAttributeConstants.A_ETAG_HEADER);
+        if (etag != null) {
+            data.put(RecrawlAttributeConstants.A_ETAG_HEADER, etag);
+        }
+        String lastmod = getHeaderValue(method, RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER);
+        if (lastmod != null) {
+            data.put(RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER, lastmod);
+        }
+        return data;
+    }
     /**
      * send finished URI to the Headquaters.
      * {@code content-digest}, {@code etag}, {@code last-modified} are sent along with the URI.
@@ -157,36 +252,17 @@ public class HttpHeadquarterAdapter {
     public void finished(CrawlURI uri) {
         HttpPost post = new HttpPost(getFinishedURL());
         try {
-            JSONObject data = new JSONObject();
-            // not using CrawlURI#getPersistentDataMap() for efficiency
-            // it does not include content-digest and last-modified anyway,
-            // unless FetchHistoryProcessor is applied prior to this processor.
-            // as we're only interested in content-digest, etag, and last-modified, 
-            // use of FetchHistoryProcessor seems expensive.
-            data.put("status", uri.getFetchStatus());
-            String digest = uri.getContentDigestSchemeString();
-            if (digest != null) {
-                data.put(RecrawlAttributeConstants.A_CONTENT_DIGEST, digest);
-            }
-            org.apache.commons.httpclient.HttpMethod method = uri.getHttpMethod();
-            String etag = getHeaderValue(method, RecrawlAttributeConstants.A_ETAG_HEADER);
-            if (etag != null) {
-                data.put(RecrawlAttributeConstants.A_ETAG_HEADER, etag);
-            }
-            String lastmod = getHeaderValue(method, RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER);
-            if (lastmod != null) {
-                data.put(RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER, lastmod);
-            }
+            JSONObject data = getFinishedData(uri);
             List<NameValuePair> params = new ArrayList<NameValuePair>();
             params.add(new BasicNameValuePair("uri", uri.getURI()));
             params.add(new BasicNameValuePair("data", data.toString()));
             UrlEncodedFormEntity entity = new UrlEncodedFormEntity(params);
             post.setEntity(entity);
             String responseText = null;
-            synchronized (httpClient1) {
+            synchronized (httpClient2) {
                 if (logger.isLoggable(Level.FINE))
                     logger.fine("invoking PUT " + post.getURI());
-                HttpResponse response = httpClient1.execute(post);
+                HttpResponse response = httpClient2.execute(post);
                 HttpEntity re = response.getEntity();
                 responseText = EntityUtils.toString(re);
             }
@@ -239,7 +315,7 @@ public class HttpHeadquarterAdapter {
                 Writer w = new OutputStreamWriter(bytes, "UTF-8");
                 juris.write(w);
                 w.flush();
-                System.out.println("entity=" + bytes.toByteArray());
+                //System.out.println("entity=" + bytes.toByteArray());
                 HttpEntity entity = new ByteArrayEntity(bytes.toByteArray());
                 post.setEntity(entity);
                 post.addHeader("content-type", "text/json");
@@ -259,8 +335,8 @@ public class HttpHeadquarterAdapter {
                 JSONObject jres = new JSONObject(new JSONTokener(responseText));
                 int processed = jres.optInt("processed", 0);
                 //int scheduled = jres.optInt("scheduled", 0);
-                if (processed < uris.length) {
-                    logger.warning((uris.length - processed) + " of " + uris.length + " not processed");
+                if (processed < juris.length()) {
+                    logger.warning((uris.length - processed) + " of " + juris.length() + " not processed");
                 }
             } catch (JSONException ex) {
                 logger.warning("failed to parse mdiscovered response as JSON:" + responseText);

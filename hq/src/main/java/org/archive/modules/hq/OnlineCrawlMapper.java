@@ -25,6 +25,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -73,6 +75,7 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
     protected final AtomicBoolean discoveredSending = new AtomicBoolean(false);
     
     protected int discoveredBatchSize = 50;
+    protected int discoveredBatchSizeMargin = 30;
     
     protected Thread discoveredFlushThread;
     
@@ -80,20 +83,21 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
      * maximum number of URIs to request in "feed" request.
      * TODO: need to adjust based on the crawling speed for optimum performance.
      */
-    protected int feedBatchSize = 80;
+    protected int feedBatchSize = 40;
     
     protected volatile boolean running;
     
     public class Submitter implements Runnable {
         @Override
         public void run() {
-            CrawlURI[] bucket = new CrawlURI[discoveredBatchSize];
+            CrawlURI[] bucket = new CrawlURI[discoveredBatchSize + discoveredBatchSizeMargin];
             while (running || !discoveredQueue.isEmpty()) {
                 Arrays.fill(bucket, null);
                 for (int i = 0; i < bucket.length; i++) {
-                    // wait up to 5 seconds to fill up the bucket.
+                    // wait up to 2 seconds to fill up discoveredBatchSize
                     try {
-                        CrawlURI curi = discoveredQueue.poll(5, TimeUnit.SECONDS);
+                        long wait = i < discoveredBatchSize ? 2 : 0;
+                        CrawlURI curi = discoveredQueue.poll(wait, TimeUnit.SECONDS);
                         if (curi == null) break;
                         bucket[i] = curi;
                     } catch (InterruptedException ex) {
@@ -196,7 +200,7 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
 //        if (curi.isPrerequisite()) {
         if (curi.forceFetch()) {
             if (logger.isLoggable(Level.FINE))
-                logger.fine("sending " + curi + "to receive()");
+                logger.fine("sending " + curi + " to receive()");
             //schedule(curi);
             // at this point, CrawlURI has been initialized by
             // FrontierPreparer. we don't need to do it again.
@@ -213,6 +217,8 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
         // send all CrawlURI to the central server
         if (running) {
             // flush thread is active. queue and leave.
+            if (logger.isLoggable(Level.FINE))
+                logger.fine("queueing for submission: " + curi.getURI());
             try {
                 discoveredQueue.put(curi);
             } catch (InterruptedException ex) {
@@ -252,7 +258,8 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
 //        }
 //    }
     
-    private AtomicBoolean feedInProgress = new AtomicBoolean(false);
+//    private AtomicBoolean feedInProgress = new AtomicBoolean(false);
+    private Lock feedLock = new ReentrantLock();
     
     /**
      * {@inheritDoc}
@@ -260,12 +267,16 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
     @Override
     public long requestFlush() {
         long count = 0;
-        if (feedInProgress.compareAndSet(false, true)) {
-            int safeTotalNodes = totalNodes > 0 ? totalNodes : 1;
+        if (feedLock.tryLock()) {
             try {
+                int safeTotalNodes = totalNodes > 0 ? totalNodes : 1;
                 if (logger.isLoggable(Level.FINE))
                     logger.fine("running getCrawlURIs()");
+                long t0 = System.currentTimeMillis();
                 CrawlURI[] uris = client.getCrawlURIs(nodeNo, safeTotalNodes, feedBatchSize);
+                if (logger.isLoggable(Level.FINE))
+                    logger.fine("getCrawlURIs() done in " + (System.currentTimeMillis() - t0) +
+                            "ms, " + uris.length + " URIs");
                 for (CrawlURI uri : uris) {
                     if (uri != null) {
                         schedule(uri);
@@ -273,7 +284,7 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
                     }
                 }
             } finally {
-                feedInProgress.set(false);
+                feedLock.unlock();
             }
         }
         return count;
@@ -331,13 +342,14 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
 
     /**
      * {@inheritDoc}
-     * always returns 0. used by org.archive.crawler.frontier.WorkQueueFrontier to
-     * determine if crawl reached its end.
+     * always returns 1.
+     * as this method is used by {@link org.archive.crawler.frontier.WorkQueueFrontier} to
+     * decide if crawl job reached at its end, this methods always returning 1 means, crawl
+     * job never reaches its end.
      */
     @Override
     public long pending() {
-        // TODO Auto-generated method stub
-        return 0;
+        return 1;
     }
 
     @Override

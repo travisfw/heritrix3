@@ -18,11 +18,17 @@
  */
 package org.archive.modules.hq;
 
+import java.util.Arrays;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.archive.modules.CrawlURI;
 import org.archive.modules.Processor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.Lifecycle;
 
 /**
  * HttpPersistProcessor notifies remote crawl manager of the completion of 
@@ -30,12 +36,51 @@ import org.springframework.beans.factory.annotation.Autowired;
  * content-digest, throuh HTTP.
  * @contributor kenji
  */
-public class HttpPersistProcessor extends Processor {
+public class HttpPersistProcessor extends Processor implements Lifecycle {
     private static final Logger logger = Logger.getLogger(HttpPersistProcessor.class.getName());
 
     HttpHeadquarterAdapter client;
     
+    protected final BlockingQueue<CrawlURI> finishedQueue;
+    protected int finishedBatchSize = 20;
+    protected int finishedBatchSizeMargin = 20;
+    protected Thread finishedFlushThread;
+    
+    boolean running;
+    
+    public class Submitter implements Runnable {
+        @Override
+        public void run() {
+            CrawlURI[] bucket = new CrawlURI[finishedBatchSize + finishedBatchSizeMargin];
+            while (running || !finishedQueue.isEmpty()) {
+                Arrays.fill(bucket, null);
+                for (int i = 0; i < bucket.length; i++) {
+                    try {
+                        long wait = i < finishedBatchSize ? 2 : 0;
+                        CrawlURI curi = finishedQueue.poll(wait, TimeUnit.SECONDS);
+                        if (curi == null) break;
+                        bucket[i] = curi;
+                    } catch (InterruptedException ex) {
+                        break;
+                    }
+                }
+                if (bucket[0] != null) {
+                    long t0 = System.currentTimeMillis();
+                    if (logger.isLoggable(Level.FINE))
+                        logger.fine("submitting finished");
+                    client.mfinished(bucket);
+                    if (logger.isLoggable(Level.FINE))
+                        logger.fine("submission done in "
+                                + (System.currentTimeMillis() - t0)
+                                + "ms, finishedQueue.size="
+                                + finishedQueue.size());
+                }
+            }
+        }
+    }
+    
     public HttpPersistProcessor() {
+        this.finishedQueue = new LinkedBlockingQueue<CrawlURI>(500);
     }
     
     @Autowired(required=true)
@@ -45,7 +90,17 @@ public class HttpPersistProcessor extends Processor {
 
     @Override
     protected void innerProcess(CrawlURI uri) throws InterruptedException {
-        client.finished(uri);
+        if (running) {
+            // flush thread is ative. queue and leave.
+            try {
+                finishedQueue.put(uri);
+            } catch (InterruptedException ex) {
+                // TODO: do not lose CrawlURI!
+            }
+        } else {
+            // submit CrawlURI one by one during shutdown.
+            client.finished(uri);
+        }
     }
 
     /**
@@ -59,4 +114,21 @@ public class HttpPersistProcessor extends Processor {
         return (scheme.equals("http") || scheme.equals("https")) && curi.isSuccess();
     }
 
+    @Override
+    public boolean isRunning() {
+        return running;
+    }
+    
+    public void start() {
+        if (running) return;
+        running = true;
+        finishedFlushThread = new Thread(new Submitter());
+        finishedFlushThread.start();
+    };
+    
+    @Override
+    public void stop() {
+        running = false;
+        finishedFlushThread = null;
+    }
 }
