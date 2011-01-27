@@ -148,6 +148,22 @@ public class PreconditionEnforcer extends Processor  {
         this.loggerModule = loggerModule;
     }
     
+    {
+        setNoRobots(false);
+    }
+    public boolean getNoRobots() {
+        return (Boolean)kp.get("noRobots");
+    }
+    /**
+     * setting this parameter to true makes robots.txt non-prerequisite,
+     * i.e. even fetching robots.txt is not required. <em>Do not turn
+     * this flag on unless you really know what you're doing.</em>
+     * @param noRobots true for completely bypassing robots.txt prerequisite.
+     */
+    public void setNoRobots(boolean noRobots) {
+        kp.put("noRobots", noRobots);
+    }
+    
     public PreconditionEnforcer() {
         super();
     }
@@ -206,6 +222,8 @@ public class PreconditionEnforcer extends Processor  {
      *         we can precede to process this url.
      */
     private boolean considerRobotsPreconditions(CrawlURI curi) {
+        if (getNoRobots()) return false;
+        
         // treat /robots.txt fetches specially
         UURI uuri = curi.getUURI();
         try {
