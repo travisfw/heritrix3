@@ -353,7 +353,10 @@ public abstract class AbstractFrontier
 //                            outboundLock.writeLock().unlock();
 //                        }
                         readyLock.lock();
-                        queueReady.signalAll();
+                        //queueReady.signalAll();
+                        // resume just one thread and it will resume other threads
+                        // as CrawlURI become available.
+                        queueReady.signal();
                         readyLock.unlock();
                         reachedState(State.RUN);
                         do {
@@ -396,13 +399,16 @@ public abstract class AbstractFrontier
                             // use poll with timeout to deal with status transition
                             // without inbound message (such as thread death while
                             // processing).
-                            snoozeLock.lock();
-                            try {
-                                // suspend indefinitely until resumed by requestState()
-                                if (targetState == State.PAUSE)
+                            // call to reachedState() may have changed targetState.
+                            // see CrawlController.noteFrontierState().
+                            if (targetState == State.PAUSE) {
+                                snoozeLock.lock();
+                                try {
+                                    // suspend indefinitely until resumed by requestState()
                                     snoozeUpdated.await();
-                            } finally {
-                                snoozeLock.unlock();
+                                } finally {
+                                    snoozeLock.unlock();
+                                }
                             }
                         } while (targetState == State.PAUSE);
                         break;
