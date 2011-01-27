@@ -388,29 +388,21 @@ public abstract class AbstractFrontier
                         // pausing
                         // prevent all outbound takes
 //                        outboundLock.writeLock().lock();
-                        do {
-                            if (getInProcessCount() == 0) {
-//                            if (outbound.size() == getInProcessCount()) {
-                                // if all 'in-process' URIs are actually 
-                                // waiting in outbound, we are at PAUSE
-                                reachedState(State.PAUSE);
+                        while (getInProcessCount() > 0) {
+                            Thread.sleep(1000);
+                        }
+                        reachedState(State.PAUSE);
+                        // call to reachedState() can change targetState to other than
+                        // State.PAUSE. see CrawlController.noteFrontierState().
+                        while (targetState == State.PAUSE) {
+                            snoozeLock.lock();
+                            try {
+                                // suspend indefinitely until resumed by requestState()
+                                snoozeUpdated.await();
+                            } finally {
+                                snoozeLock.unlock();
                             }
-                            // continue to process discovered and finished URIs.
-                            // use poll with timeout to deal with status transition
-                            // without inbound message (such as thread death while
-                            // processing).
-                            // call to reachedState() may have changed targetState.
-                            // see CrawlController.noteFrontierState().
-                            if (targetState == State.PAUSE) {
-                                snoozeLock.lock();
-                                try {
-                                    // suspend indefinitely until resumed by requestState()
-                                    snoozeUpdated.await();
-                                } finally {
-                                    snoozeLock.unlock();
-                                }
-                            }
-                        } while (targetState == State.PAUSE);
+                        }
                         break;
                     case FINISH:
                         // prevent all outbound takes
