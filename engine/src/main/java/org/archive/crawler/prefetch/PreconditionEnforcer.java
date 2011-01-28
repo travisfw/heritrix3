@@ -221,7 +221,7 @@ public class PreconditionEnforcer extends Processor  {
      *         should be terminated for some other reason.  False if
      *         we can precede to process this url.
      */
-    private boolean considerRobotsPreconditions(CrawlURI curi) {
+    protected boolean considerRobotsPreconditions(CrawlURI curi) {
         if (getNoRobots()) return false;
         
         // treat /robots.txt fetches specially
@@ -293,7 +293,7 @@ public class PreconditionEnforcer extends Processor  {
      * @param curi CrawlURI whose dns prerequisite we're to check.
      * @return true if no further processing in this module should occur
      */
-    private boolean considerDnsPreconditions(CrawlURI curi) {
+    protected boolean considerDnsPreconditions(CrawlURI curi) {
         if(curi.getUURI().getScheme().equals("dns")){
             // DNS URIs never have a DNS precondition
             curi.setPrerequisite(true);
@@ -396,7 +396,7 @@ public class PreconditionEnforcer extends Processor  {
     *         be met before we can proceed. False if we can precede to process
     *         this url.
     */
-    private boolean credentialPrecondition(final CrawlURI curi) {
+    protected boolean credentialPrecondition(final CrawlURI curi) {
 
         boolean result = false;
 
@@ -464,7 +464,7 @@ public class PreconditionEnforcer extends Processor  {
      * @param curi CrawlURI.
      * @return True if already run.
      */
-    private boolean authenticated(final Credential credential, final CrawlURI curi) {
+    protected boolean authenticated(final Credential credential, final CrawlURI curi) {
         CrawlServer server = serverCache.getServerFor(curi.getUURI());
         if (!server.hasCredentials()) {
             return false;
@@ -489,7 +489,7 @@ public class PreconditionEnforcer extends Processor  {
      * @param preq Object to set a prerequisite.
      * @throws URIException
      */
-    private void markPrerequisite(CrawlURI curi, String preq) 
+    protected void markPrerequisite(CrawlURI curi, String preq) 
     throws URIException {
         UURI src = curi.getUURI();
         UURI dest = UURIFactory.getInstance(preq);
