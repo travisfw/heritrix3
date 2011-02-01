@@ -34,6 +34,7 @@ import org.archive.crawler.datamodel.UriUniqFilter;
 import org.archive.crawler.datamodel.UriUniqFilter.CrawlUriReceiver;
 import org.archive.crawler.framework.Frontier;
 import org.archive.crawler.prefetch.FrontierPreparer;
+import org.archive.modules.CrawlMetadata;
 import org.archive.modules.CrawlURI;
 import org.archive.spring.KeyedProperties;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,6 +68,8 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
     protected CrawlUriReceiver receiver;
     
     protected FrontierPreparer preparer;
+    
+    protected CrawlMetadata crawlInfo;
     
     protected final AtomicLong addedCount = new AtomicLong();
     
@@ -133,6 +136,10 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
     @Autowired(required=true)
     public void setPreparer(FrontierPreparer preparer) {
         this.preparer = preparer;
+    }
+    @Autowired(required=true)
+    public void setCrawlMetadata(CrawlMetadata crawlInfo) {
+        this.crawlInfo = crawlInfo;
     }
     
     public int getNodeNo() {
@@ -378,6 +385,7 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
         running = false;
 //        // flush discovered queue
 //        flushDiscovered(discoveredQueue.size());
+        client.reset(nodeNo, totalNodes);
         discoveredFlushThread = null;
     }
     

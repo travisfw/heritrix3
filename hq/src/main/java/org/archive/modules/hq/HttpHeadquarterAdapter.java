@@ -41,7 +41,9 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.params.CoreProtocolPNames;
 import org.apache.http.util.EntityUtils;
+import org.archive.modules.CrawlMetadata;
 import org.archive.modules.CrawlURI;
 import org.archive.modules.extractor.HTMLLinkContext;
 import org.archive.modules.extractor.LinkContext;
@@ -52,6 +54,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONTokener;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * remote crawl headquarters client talking in HTTP.
@@ -76,6 +79,9 @@ public class HttpHeadquarterAdapter {
     // for finished and discovered
     private HttpClient httpClient2;
     
+    // for getting job name
+    protected CrawlMetadata crawlInfo;
+    
     // URL cache
     private String finishedURL = null;
     private String discoveredURL = null;
@@ -86,7 +92,14 @@ public class HttpHeadquarterAdapter {
 
     public HttpHeadquarterAdapter() {
         this.httpClient1 = new DefaultHttpClient();
+        setupProtocolParams(this.httpClient1);
         this.httpClient2 = new DefaultHttpClient();
+        setupProtocolParams(this.httpClient2);
+    }
+    
+    private void setupProtocolParams(HttpClient client) {
+        client.getParams().setBooleanParameter(CoreProtocolPNames.USE_EXPECT_CONTINUE, false);
+        client.getParams().setBooleanParameter(CoreProtocolPNames.WAIT_FOR_CONTINUE, false);
     }
 
     private String baseURL = "http://localhost/hq";
@@ -95,62 +108,62 @@ public class HttpHeadquarterAdapter {
         // clear
         finishedURL = null;
         discoveredURL = null;
+        multiFinishedURL = null;
         multiDiscoveredURL = null;
     }
     public String getBaseURL() {
         return baseURL;
     }
+    @Autowired(required=true)
+    public void setCrawlMetadata(CrawlMetadata crawlInfo) {
+        this.crawlInfo = crawlInfo;
+    }
     
+    protected StringBuilder getURL(String action) {
+        StringBuilder sb = new StringBuilder(baseURL);
+        if (!baseURL.endsWith("/"))
+            sb.append("/");
+        sb.append(crawlInfo.getJobName());
+        sb.append("/");
+        sb.append(action);
+        return sb;
+    }
     protected String getFinishedURL() {
         if (finishedURL == null) {
-            StringBuilder sb = new StringBuilder(baseURL);
-            if (!baseURL.endsWith("/"))
-                sb.append("/");
-            sb.append("finished");
-            finishedURL = sb.toString();
+            finishedURL = getURL("finished").toString();
         }
         return finishedURL;
     }
     protected String getDiscoveredURL() {
         if (discoveredURL == null) {
-            StringBuilder sb = new StringBuilder(baseURL);
-            if (!baseURL.endsWith("/"))
-                sb.append("/");
-            sb.append("discovered");
-            discoveredURL = sb.toString();
+            discoveredURL = getURL("discovered").toString();
         }
         return discoveredURL;
     }
     protected String getMultiFinishedURL() {
         if (multiFinishedURL == null) {
-            StringBuilder sb = new StringBuilder(baseURL);
-            if (!baseURL.endsWith("/"))
-                sb.append("/");
-            sb.append("mfinished");
-            multiFinishedURL = sb.toString();
+            multiFinishedURL = getURL("mfinished").toString();
         }
         return multiFinishedURL;
     }
     protected String getMultiDiscoveredURL() {
         if (multiDiscoveredURL == null) {
-            StringBuilder sb = new StringBuilder(baseURL);
-            if (!baseURL.endsWith("/"))
-                sb.append("/");
-            sb.append("mdiscovered");
-            multiDiscoveredURL = sb.toString();
+            multiDiscoveredURL = getURL("mdiscovered").toString();
         }
         return multiDiscoveredURL;
     }
     protected String getFeedURL(int nodeNo, int totalNodes, int nuris) {
-        StringBuilder sb = new StringBuilder(baseURL);
-        if (!baseURL.endsWith("/"))
-            sb.append("/");
-        sb.append("feed");
+        StringBuilder sb = getURL("feed");
         sb.append("?name=");
         sb.append(nodeNo);
         sb.append("&nodes=");
         sb.append(totalNodes);
         sb.append("&n=" + nuris);
+        return sb.toString();
+    }
+    protected String getResetURL(int nodeNo, int totalNodes) {
+        StringBuilder sb = getURL("reset");
+        sb.append("?name=").append(nodeNo).append("&nodes=").append(totalNodes);
         return sb.toString();
     }
     
@@ -234,6 +247,9 @@ public class HttpHeadquarterAdapter {
         org.apache.commons.httpclient.HttpMethod method = uri.getHttpMethod();
         String etag = getHeaderValue(method, RecrawlAttributeConstants.A_ETAG_HEADER);
         if (etag != null) {
+            // Etag is usually quoted
+            if (etag.length() >= 2 && etag.startsWith("\"") && etag.endsWith("\""))
+                etag = etag.substring(1, etag.length() - 1);
             data.put(RecrawlAttributeConstants.A_ETAG_HEADER, etag);
         }
         String lastmod = getHeaderValue(method, RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER);
@@ -420,6 +436,31 @@ public class HttpHeadquarterAdapter {
         }
     }
     
+    public void reset(int nodeNo, int totalNodes) {
+        String url = getResetURL(nodeNo, totalNodes);
+        HttpGet get = new HttpGet(url);
+        try {
+            String responseText = null;
+            synchronized (httpClient1) {
+                HttpResponse response = httpClient1.execute(get);
+                StatusLine sl = response.getStatusLine();
+                if (sl.getStatusCode() == 200) {
+                    HttpEntity re = response.getEntity();
+                    responseText = EntityUtils.toString(re);
+                } else {
+                    HttpEntity re = response.getEntity();
+                    if (re != null)
+                        re.consumeContent();
+                    logger.warning("Get " + url + " returned " + sl);
+                }
+            }
+        } catch (Exception ex) {
+            logger.warning("error getting CrawlURIs: " + ex);
+            ex.printStackTrace();
+        }
+    }
+    
+
     public CrawlURI[] getCrawlURIs(int nodeNo, int totalNodes, int nuris) {
         String url = getFeedURL(nodeNo, totalNodes, nuris);
         HttpGet get = new HttpGet(url);
