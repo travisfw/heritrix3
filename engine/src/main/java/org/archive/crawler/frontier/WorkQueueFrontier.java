@@ -609,6 +609,23 @@ implements Closeable,
     protected abstract WorkQueue getQueueFor(String classKey);
     
     /**
+     * return true if there's at least one non-empty inactive queue, at any precedence
+     * &gt; procedenceFloor. 
+     * @return true if there's eligible inactive queue.
+     */
+    private boolean hasInactiveQueues() {
+        int precedenceFloor = getPrecedenceFloor();
+        Map<Integer, Queue<String>> inactiveQueues = getInactiveQueuesByPrecedence();
+        for (Integer k : inactiveQueues.keySet()) {
+            if (k >= precedenceFloor) continue;
+            Queue<String> q = inactiveQueues.get(k);
+            if (!q.isEmpty())
+                return true;
+        }
+        return false;
+    }
+    
+    /**
      * Return the next CrawlURI eligible to be processed (and presumably
      * visited/fetched) by a a worker thread.
      *
@@ -643,7 +660,7 @@ implements Closeable,
                                 key = readyClassQueues.poll();
                                 if (key == null) {
                                     // TODO: trigger by low number, not zero
-                                    if (getInactiveQueuesByPrecedence().isEmpty()) {
+                                    if (!hasInactiveQueues()) {
                                         // try flushing UriUniqFilter and try activation again.
                                         long t2 = System.currentTimeMillis();
                                         long nflushed = uriUniqFilter.requestFlush();
