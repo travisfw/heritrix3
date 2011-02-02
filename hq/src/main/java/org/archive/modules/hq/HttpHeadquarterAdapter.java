@@ -183,8 +183,8 @@ public class HttpHeadquarterAdapter {
                 // allow partially filled array
                 if (uri == null) continue;
                 JSONObject juri = new JSONObject();
-                juri.put("uri", uri.getURI());
-                juri.put("data", getFinishedData(uri));
+                juri.put(PROPERTY_URI, uri.getURI());
+                juri.put(PROPERTY_DATA, getFinishedData(uri));
                 juris.put(juri);
             }
             // sending JSON text as entity for compactness
@@ -258,10 +258,18 @@ public class HttpHeadquarterAdapter {
         }
     }
     // JSON property name constants
+    // for finished/mfinished
     public static final String PROPERTY_STATUS = "s";
     public static final String PROPERTY_CONTENT_DIGEST = "d";
     public static final String PROPERTY_ETAG = "e";
     public static final String PROPERTY_LAST_MODIFIED = "m";
+
+    // for discovered/mdiscovered: these are also used as HTTP POST parameter names
+    public static final String PROPERTY_PATH = "p";
+    public static final String PROPERTY_VIA = "v";
+    public static final String PROPERTY_CONTEXT = "x";
+    public static final String PROPERTY_URI = "u";
+    public static final String PROPERTY_DATA = "a";
     
     private JSONObject getFinishedData(CrawlURI uri) throws JSONException {
         JSONObject data = new JSONObject();
@@ -306,8 +314,8 @@ public class HttpHeadquarterAdapter {
         try {
             JSONObject data = getFinishedData(uri);
             List<NameValuePair> params = new ArrayList<NameValuePair>();
-            params.add(new BasicNameValuePair("uri", uri.getURI()));
-            params.add(new BasicNameValuePair("data", data.toString()));
+            params.add(new BasicNameValuePair(PROPERTY_URI, uri.getURI()));
+            params.add(new BasicNameValuePair(PROPERTY_DATA, data.toString()));
             UrlEncodedFormEntity entity = new UrlEncodedFormEntity(params);
             post.setEntity(entity);
             String responseText = null;
@@ -328,6 +336,7 @@ public class HttpHeadquarterAdapter {
             logger.warning("error storing " + uri + ":" + ex);
         }
     }
+    
     /**
      * send multiple discovered URIs to Headquarters in a batch
      * @param uris array of CrawlURIs. null elements are allowed and simply ignored.
@@ -340,17 +349,17 @@ public class HttpHeadquarterAdapter {
                 // allow partially filled array
                 if (uri == null) continue;
                 JSONObject juri = new JSONObject();
-                juri.put("uri", uri.getURI());
-                juri.put("path", uri.getPathFromSeed());
+                juri.put(PROPERTY_URI, uri.getURI());
+                juri.put(PROPERTY_PATH, uri.getPathFromSeed());
                 UURI via = uri.getVia();
                 if (via != null) {
-                    juri.put("via", via.getURI());
+                    juri.put(PROPERTY_VIA, via.getURI());
                 }
                 LinkContext context = uri.getViaContext();
                 if (context != null) {
                     // only HTMLLinkContext is supported for now
                     if (context instanceof HTMLLinkContext) {
-                        juri.put("context", context.toString());
+                        juri.put(PROPERTY_CONTEXT, context.toString());
                     }
                 }
                 juris.put(juri);
@@ -422,17 +431,17 @@ public class HttpHeadquarterAdapter {
         try {
             // the same set of parameters as output of HashCrawlMapper
             List<NameValuePair> params = new ArrayList<NameValuePair>();
-            params.add(new BasicNameValuePair("uri", uri.getURI()));
-            params.add(new BasicNameValuePair("path", uri.getPathFromSeed()));
+            params.add(new BasicNameValuePair(PROPERTY_URI, uri.getURI()));
+            params.add(new BasicNameValuePair(PROPERTY_PATH, uri.getPathFromSeed()));
             UURI via = uri.getVia();
             if (via != null) {
-                params.add(new BasicNameValuePair("via", via.getURI()));
+                params.add(new BasicNameValuePair(PROPERTY_VIA, via.getURI()));
             }
             LinkContext context = uri.getViaContext();
             if (context != null) {
                 // only HTMLLinkContext is supported for now
                 if (context instanceof HTMLLinkContext) {
-                    params.add(new BasicNameValuePair("context", context.toString()));
+                    params.add(new BasicNameValuePair(PROPERTY_CONTEXT, context.toString()));
                 }
             }
             post.setEntity(new UrlEncodedFormEntity(params));
@@ -524,10 +533,10 @@ public class HttpHeadquarterAdapter {
             CrawlURI[] result = new CrawlURI[array.length()];
             for (int i = 0; i < array.length(); i++) {
                 JSONObject o = array.getJSONObject(i);
-                String uri = o.getString("uri");
-                String path = o.getString("path");
-                String via = jget(o, "via");
-                String context = jget(o, "context");
+                String uri = o.getString(PROPERTY_URI);
+                String path = o.getString(PROPERTY_PATH);
+                String via = jget(o, PROPERTY_VIA);
+                String context = jget(o, PROPERTY_CONTEXT);
                 UURI uuri = UURIFactory.getInstance(uri);
                 UURI viaUuri = null;
                 if (via != null && via.length() > 0) {
@@ -544,7 +553,7 @@ public class HttpHeadquarterAdapter {
                 }
                 CrawlURI curi = new CrawlURI(uuri, path, viaUuri, viaContext);
                 // content-digest and last-modified comes in data object.
-                JSONObject data = o.optJSONObject("data");
+                JSONObject data = o.optJSONObject(PROPERTY_DATA);
                 if (data != null) {
                     String etag = jget(data, PROPERTY_ETAG);
                     if (etag != null) {
