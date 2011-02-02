@@ -21,8 +21,11 @@ package org.archive.modules.hq;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.Date;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -58,7 +61,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * remote crawl headquarters client talking in HTTP.
- * <p>This implementation uses Aache HTTP Component 4.0 instead of
+ * <p>This implementation uses Apache HTTP Component 4.0 instead of
  * Commons HttpClient, because heritrix-commons project includes a modified
  * copy of Commons HttpClient in which recording of request/response is hard-coded.
  * Using Commons HttpClient for Headquarter communication resulted in an error
@@ -232,6 +235,34 @@ public class HttpHeadquarterAdapter {
             }            
         }
     }
+    
+    protected static final DateFormat HTTP_DATE_FORMAT = 
+        new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
+    
+    protected long parseHttpDate(String dateStr) {
+        synchronized (HTTP_DATE_FORMAT) {
+            try {
+                Date d = HTTP_DATE_FORMAT.parse(dateStr);
+                return d.getTime();
+            } catch (ParseException ex) {
+                if (logger.isLoggable(Level.FINER))
+                    logger.fine("bad HTTP DATE: " + dateStr);
+                return 0;
+            }
+        }
+    }
+    protected String formatHttpDate(long time) {
+        synchronized (HTTP_DATE_FORMAT) {
+            // format is not thread safe either
+            return HTTP_DATE_FORMAT.format(new Date(time));
+        }
+    }
+    // JSON property name constants
+    public static final String PROPERTY_STATUS = "s";
+    public static final String PROPERTY_CONTENT_DIGEST = "d";
+    public static final String PROPERTY_ETAG = "e";
+    public static final String PROPERTY_LAST_MODIFIED = "m";
+    
     private JSONObject getFinishedData(CrawlURI uri) throws JSONException {
         JSONObject data = new JSONObject();
         // not using CrawlURI#getPersistentDataMap() for efficiency
@@ -239,10 +270,10 @@ public class HttpHeadquarterAdapter {
         // unless FetchHistoryProcessor is applied prior to this processor.
         // as we're only interested in content-digest, etag, and last-modified, 
         // use of FetchHistoryProcessor seems expensive.
-        data.put("status", uri.getFetchStatus());
+        data.put(PROPERTY_STATUS, uri.getFetchStatus());
         String digest = uri.getContentDigestSchemeString();
         if (digest != null) {
-            data.put(RecrawlAttributeConstants.A_CONTENT_DIGEST, digest);
+            data.put(PROPERTY_CONTENT_DIGEST, digest);
         }
         org.apache.commons.httpclient.HttpMethod method = uri.getHttpMethod();
         String etag = getHeaderValue(method, RecrawlAttributeConstants.A_ETAG_HEADER);
@@ -250,11 +281,16 @@ public class HttpHeadquarterAdapter {
             // Etag is usually quoted
             if (etag.length() >= 2 && etag.startsWith("\"") && etag.endsWith("\""))
                 etag = etag.substring(1, etag.length() - 1);
-            data.put(RecrawlAttributeConstants.A_ETAG_HEADER, etag);
+            data.put(PROPERTY_ETAG, etag);
         }
         String lastmod = getHeaderValue(method, RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER);
         if (lastmod != null) {
-            data.put(RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER, lastmod);
+            long lastmod_ms = parseHttpDate(lastmod);
+            if (lastmod_ms == 0)
+                lastmod_ms = uri.getFetchCompletedTime();
+            data.put(PROPERTY_LAST_MODIFIED, lastmod_ms);
+        } else {
+            data.put(PROPERTY_LAST_MODIFIED, uri.getFetchCompletedTime());
         }
         return data;
     }
@@ -427,7 +463,7 @@ public class HttpHeadquarterAdapter {
     
     private static String jget(JSONObject o, String name) {
         try {
-            return o.has(name) && !o.isNull(name) ? o.getString(name) : null;
+            return !o.isNull(name) ? o.getString(name) : null;
         } catch (JSONException ex) {
             if (logger.isLoggable(Level.FINE)) {
                 logger.fine("getString(" + name + ") failed on " + o);
@@ -447,6 +483,9 @@ public class HttpHeadquarterAdapter {
                 if (sl.getStatusCode() == 200) {
                     HttpEntity re = response.getEntity();
                     responseText = EntityUtils.toString(re);
+                    if (logger.isLoggable(Level.FINE))
+                        logger.fine("reset(" + nodeNo + "," + totalNodes
+                                + ")->" + responseText);
                 } else {
                     HttpEntity re = response.getEntity();
                     if (re != null)
@@ -458,8 +497,7 @@ public class HttpHeadquarterAdapter {
             logger.warning("error getting CrawlURIs: " + ex);
             ex.printStackTrace();
         }
-    }
-    
+    }    
 
     public CrawlURI[] getCrawlURIs(int nodeNo, int totalNodes, int nuris) {
         String url = getFeedURL(nodeNo, totalNodes, nuris);
@@ -508,11 +546,24 @@ public class HttpHeadquarterAdapter {
                 // content-digest and last-modified comes in data object.
                 JSONObject data = o.optJSONObject("data");
                 if (data != null) {
-                    @SuppressWarnings("unchecked")
-                    Iterator<String> keys = data.keys();
-                    while (keys.hasNext()) {
-                        String key = keys.next();
-                        curi.getData().put(key, data.optString(key));
+                    String etag = jget(data, PROPERTY_ETAG);
+                    if (etag != null) {
+                        curi.getData().put(RecrawlAttributeConstants.A_ETAG_HEADER, etag);
+                    }
+                    if (!data.isNull(PROPERTY_LAST_MODIFIED)) {
+                        String httpDate = null;
+                        Object m = data.get(PROPERTY_LAST_MODIFIED);
+                        if (m instanceof String) {
+                            httpDate = (String)m;
+                        } else if (m instanceof Number) {
+                            httpDate = formatHttpDate(((Number)m).longValue());
+                        }
+                        if (httpDate != null)
+                            curi.getData().put(RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER, httpDate);
+                    }
+                    String contentDigest = jget(data, PROPERTY_CONTENT_DIGEST);
+                    if (contentDigest != null) {
+                        curi.getData().put(RecrawlAttributeConstants.A_CONTENT_DIGEST, contentDigest);
                     }
                 }
                 result[i] = curi;
