@@ -394,8 +394,16 @@ public abstract class AbstractFrontier
                         // pausing
                         // prevent all outbound takes
 //                        outboundLock.writeLock().lock();
-                        while (getInProcessCount() > 0) {
-                            Thread.sleep(1000);
+                        while (targetState == State.PAUSE && getInProcessCount() > 0) {
+                            // use of Thread.sleep() prevents operator from unpausing the
+                            // crawler until all threads finish current processing.
+                            //Thread.sleep(1000);
+                            snoozeLock.lock();
+                            try {
+                                snoozeUpdated.await(1, TimeUnit.SECONDS);
+                            } finally {
+                                snoozeLock.unlock();
+                            }
                         }
                         reachedState(State.PAUSE);
                         // call to reachedState() can change targetState to other than
