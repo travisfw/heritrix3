@@ -239,11 +239,17 @@ public class HttpHeadquarterAdapter {
     protected static final DateFormat HTTP_DATE_FORMAT = 
         new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
     
+    /**
+     * converts time in HTTP Date format {@code dateStr} to seconds
+     * since epoch. 
+     * @param dateStr time in HTTP Date format.
+     * @return seconds since epoch
+     */
     protected long parseHttpDate(String dateStr) {
         synchronized (HTTP_DATE_FORMAT) {
             try {
                 Date d = HTTP_DATE_FORMAT.parse(dateStr);
-                return d.getTime();
+                return d.getTime() / 1000;
             } catch (ParseException ex) {
                 if (logger.isLoggable(Level.FINER))
                     logger.fine("bad HTTP DATE: " + dateStr);
@@ -251,10 +257,15 @@ public class HttpHeadquarterAdapter {
             }
         }
     }
+    /**
+     * converts seconds since epoch {@code time} to HTTP Date string.
+     * @param time seconds since epoch
+     * @return HTTP date string
+     */
     protected String formatHttpDate(long time) {
         synchronized (HTTP_DATE_FORMAT) {
             // format is not thread safe either
-            return HTTP_DATE_FORMAT.format(new Date(time));
+            return HTTP_DATE_FORMAT.format(new Date(time * 1000));
         }
     }
     // JSON property name constants
@@ -293,12 +304,15 @@ public class HttpHeadquarterAdapter {
         }
         String lastmod = getHeaderValue(method, RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER);
         if (lastmod != null) {
-            long lastmod_ms = parseHttpDate(lastmod);
-            if (lastmod_ms == 0)
-                lastmod_ms = uri.getFetchCompletedTime();
-            data.put(PROPERTY_LAST_MODIFIED, lastmod_ms);
+            long lastmod_sec = parseHttpDate(lastmod);
+            if (lastmod_sec == 0)
+                lastmod_sec = uri.getFetchCompletedTime();
+            if (lastmod_sec != 0)
+                data.put(PROPERTY_LAST_MODIFIED, lastmod_sec);
         } else {
-            data.put(PROPERTY_LAST_MODIFIED, uri.getFetchCompletedTime());
+            long completed = uri.getFetchCompletedTime();
+            if (completed != 0)
+                data.put(PROPERTY_LAST_MODIFIED, completed);
         }
         return data;
     }

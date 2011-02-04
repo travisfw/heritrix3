@@ -109,9 +109,12 @@ public class HttpPersistProcessor extends Processor implements Lifecycle {
      */
     @Override
     protected boolean shouldProcess(CrawlURI curi) {
+        // prerequisite URIs such as DNS, robots.txt are internal. they need not be reported
+        // to HQ.
+        if (curi.isPrerequisite()) return false;
         // TODO do we want to store other non-success codes, such as 304?
         String scheme = curi.getUURI().getScheme();
-        return (scheme.equals("http") || scheme.equals("https")) && curi.isSuccess();
+        return (scheme.equals("http") || scheme.equals("https")); // && curi.isSuccess();
     }
 
     @Override
