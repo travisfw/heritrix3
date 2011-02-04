@@ -114,7 +114,10 @@ public class HttpPersistProcessor extends Processor implements Lifecycle {
         if (curi.isPrerequisite()) return false;
         // TODO do we want to store other non-success codes, such as 304?
         String scheme = curi.getUURI().getScheme();
-        return (scheme.equals("http") || scheme.equals("https")); // && curi.isSuccess();
+        if (!(scheme.equals("http") || scheme.equals("https"))) return false;
+        if (curi.getHttpMethod() == null) return false;
+        // && curi.isSuccess();
+        return true;
     }
 
     @Override

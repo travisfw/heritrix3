@@ -289,12 +289,12 @@ public class HttpHeadquarterAdapter {
         // unless FetchHistoryProcessor is applied prior to this processor.
         // as we're only interested in content-digest, etag, and last-modified, 
         // use of FetchHistoryProcessor seems expensive.
-        data.put(PROPERTY_STATUS, uri.getFetchStatus());
         String digest = uri.getContentDigestSchemeString();
         if (digest != null) {
             data.put(PROPERTY_CONTENT_DIGEST, digest);
         }
         org.apache.commons.httpclient.HttpMethod method = uri.getHttpMethod();
+        data.put(PROPERTY_STATUS, method.getStatusCode());
         String etag = getHeaderValue(method, RecrawlAttributeConstants.A_ETAG_HEADER);
         if (etag != null) {
             // Etag is usually quoted
