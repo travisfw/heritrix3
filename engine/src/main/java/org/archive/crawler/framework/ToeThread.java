@@ -202,6 +202,7 @@ implements MultiReporter, ProgressStatisticsReporter,
         } catch (Exception e) {
             // everything else (including interruption)
             logger.log(Level.SEVERE,"Fatal exception in "+getName(),e);
+            e.printStackTrace();
         } catch (OutOfMemoryError err) {
             seriousError(err);
         } finally {
