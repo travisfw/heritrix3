@@ -286,6 +286,22 @@ public class FetchHTTP extends Processor implements Lifecycle {
     public void setSslTrustLevel(TrustLevel trustLevel) {
         kp.put("sslTrustLevel",trustLevel);
     }
+    
+    {
+        // same default value found in HeritrixHttpMethodRetryHandler
+        setMaxHttpRetires(10);
+    }
+    public int getMaxHttpRetries() {
+        return (Integer)kp.get("maxHttpRetries");
+    }
+    /**
+     * maximum number of HttpClient-level transparent retries.
+     * passed to the constructor of {@link HeritrixHttpMethodRetryHandler}.
+     * @param maxHttpRetires maximum number of retries allowed.
+     */
+    public void setMaxHttpRetires(int maxHttpRetries) {
+        kp.put("maxHttpRetries", maxHttpRetries);
+    }
 
     private transient HttpClient http = null;
 
@@ -879,7 +895,7 @@ public class FetchHTTP extends Processor implements Lifecycle {
 
         // Set retry handler.
         method.getParams().setParameter(HttpMethodParams.RETRY_HANDLER,
-                new HeritrixHttpMethodRetryHandler());
+                new HeritrixHttpMethodRetryHandler(getMaxHttpRetries()));
 
         final long maxLength = getMaxLengthBytes();
         if (maxLength > 0 && getSendRange()) {
