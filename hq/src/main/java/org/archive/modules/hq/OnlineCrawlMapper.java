@@ -191,6 +191,12 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriRece
     public int getDiscoveredBatchSizeMargin() {
         return discoveredBatchSizeMargin;
     }
+    public void setFeedBatchSize(int feedBatchSize) {
+        this.feedBatchSize = feedBatchSize;
+    }
+    public int getFeedBatchSize() {
+        return feedBatchSize;
+    }
     
     protected void schedule(CrawlURI curi) {
         // WorkQueueFrontier.processScheduleAlways() (called from receive())
