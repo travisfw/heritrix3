@@ -56,7 +56,7 @@ import org.springframework.context.Lifecycle;
  * @see HttpPersistProcessor
  * @contributor kenji
  */
-public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
+public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriReceiver {
     private static final Logger logger = Logger.getLogger(OnlineCrawlMapper.class.getName());
     
     private HttpHeadquarterAdapter client;
@@ -81,6 +81,8 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
     protected int discoveredBatchSizeMargin = 50;
     
     protected Thread discoveredFlushThread;
+    
+    protected UriUniqFilter localUniqFilter;
     
     /**
      * maximum number of URIs to request in "feed" request.
@@ -141,6 +143,19 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
     public void setCrawlMetadata(CrawlMetadata crawlInfo) {
         this.crawlInfo = crawlInfo;
     }
+    /**
+     * a {@link UriUniqFilter} for local <i>seen</i>-check to reduce
+     * <i>discovered</i> traffic to the Headquarters (optional).
+     * @param localUniqFilter UriUniqFilter
+     */
+    public void setLocalUniqFilter(UriUniqFilter localUniqFilter) {
+        if (this.localUniqFilter != null)
+            this.localUniqFilter.setDestination(null);
+        this.localUniqFilter = localUniqFilter;
+        if (this.localUniqFilter != null) {
+            this.localUniqFilter.setDestination(this);
+        }
+    }
     
     public int getNodeNo() {
         return nodeNo;
@@ -195,6 +210,16 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
             logger.fine("scheduling " + curi + " to receive()");
         receiver.receive(curi);
     }
+    
+    /**
+     * for receiving CrawlURI from {@link #localUniqFilter}.
+     * @param item CrawlURI previously unseen.
+     */
+    @Override
+    public void receive(CrawlURI item) {
+        queueDiscovered(item);
+    }
+    
     /**
      * {@inheritDoc}
      * this implementation makes no use of <code>key</code>.
@@ -227,6 +252,15 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
                 logger.fine("discarding non-fetchable URI:" + curi);
             return;
         }
+        
+        if (localUniqFilter != null) {
+            localUniqFilter.add(key, curi);
+        } else {
+            queueDiscovered(curi);
+        }
+    }
+    
+    protected void queueDiscovered(CrawlURI curi) {
         // send all CrawlURI to the central server
         if (running) {
             // flush thread is active. queue and leave.
@@ -237,10 +271,6 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
             } catch (InterruptedException ex) {
                 // TODO: do not lose curi!
             }
-//            final int size = discoveredQueue.size();
-//            if (size > discoveredBatchSize) {
-//                flushDiscovered(size);
-//            }
         } else {
             // paranoia? even after stopping we may receive discovered URIs due
             // to the activity of other components being stopped. forward it to
@@ -249,29 +279,6 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
         }
     }
     
-//    protected void flushDiscovered(int n) {
-//        if (discoveredSending.compareAndSet(false, true)) {
-//            try {
-//                int size = discoveredQueue.size();
-//                while (size > n) {
-//                    int batch = size > discoveredBatchSize * 2 ? discoveredBatchSize * 2: size;
-//                    CrawlURI[] curis = new CrawlURI[batch];
-//                    for (int i = 0; i < batch; i++) {
-//                        if ((curis[i] = discoveredQueue.poll()) == null)
-//                            break;
-//                    }
-//                    client.mdiscovered(curis);
-//                    size = discoveredQueue.size();
-//                }
-//            } finally { 
-//                discoveredSending.set(false);
-//            }
-//        } else {
-//            logger.fine("other thread is submitting");
-//        }
-//    }
-    
-//    private AtomicBoolean feedInProgress = new AtomicBoolean(false);
     private Lock feedLock = new ReentrantLock();
     
     /**
@@ -381,6 +388,9 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
     @Override
     public void start() {
         if (running) return;
+        if (localUniqFilter instanceof Lifecycle) {
+            ((Lifecycle)localUniqFilter).start();
+        }
         running = true;
         discoveredFlushThread = new Thread(new Submitter());
         discoveredFlushThread.start();
@@ -389,10 +399,11 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
     @Override
     public void stop() {
         running = false;
-//        // flush discovered queue
-//        flushDiscovered(discoveredQueue.size());
         client.reset(nodeNo, totalNodes);
         discoveredFlushThread = null;
+        if (localUniqFilter instanceof Lifecycle) {
+            ((Lifecycle)localUniqFilter).stop();
+        }
     }
     
 }
