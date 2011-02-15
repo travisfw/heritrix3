@@ -27,6 +27,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -274,6 +275,7 @@ public class HttpHeadquarterAdapter {
     public static final String PROPERTY_CONTENT_DIGEST = "d";
     public static final String PROPERTY_ETAG = "e";
     public static final String PROPERTY_LAST_MODIFIED = "m";
+    public static final String PROPERTY_ID = "id";
 
     // for discovered/mdiscovered: these are also used as HTTP POST parameter names
     public static final String PROPERTY_PATH = "p";
@@ -281,6 +283,9 @@ public class HttpHeadquarterAdapter {
     public static final String PROPERTY_CONTEXT = "x";
     public static final String PROPERTY_URI = "u";
     public static final String PROPERTY_DATA = "a";
+    
+    // CrawlURI data key used for storing Headquarter's unique ID for URIs
+    public static final String DATAKEY_ID = "HQID";
     
     private JSONObject getFinishedData(CrawlURI uri) throws JSONException {
         JSONObject data = new JSONObject();
@@ -330,6 +335,10 @@ public class HttpHeadquarterAdapter {
             List<NameValuePair> params = new ArrayList<NameValuePair>();
             params.add(new BasicNameValuePair(PROPERTY_URI, uri.getURI()));
             params.add(new BasicNameValuePair(PROPERTY_DATA, data.toString()));
+            Map<String, Object> uridata = uri.getData();
+            if (uridata != null && uridata.containsKey(DATAKEY_ID)) {
+                params.add(new BasicNameValuePair(PROPERTY_ID, (String)uridata.get(DATAKEY_ID)));
+            }
             UrlEncodedFormEntity entity = new UrlEncodedFormEntity(params);
             post.setEntity(entity);
             String responseText = null;
@@ -375,6 +384,10 @@ public class HttpHeadquarterAdapter {
                     if (context instanceof HTMLLinkContext) {
                         juri.put(PROPERTY_CONTEXT, context.toString());
                     }
+                }
+                Map<String, Object> uridata = uri.getData();
+                if (uridata != null && uridata.containsKey(DATAKEY_ID)) {
+                    juri.put(PROPERTY_ID, uridata.containsKey(DATAKEY_ID));
                 }
                 juris.put(juri);
             }
@@ -548,7 +561,7 @@ public class HttpHeadquarterAdapter {
             for (int i = 0; i < array.length(); i++) {
                 JSONObject o = array.getJSONObject(i);
                 String uri = o.getString(PROPERTY_URI);
-                String path = o.getString(PROPERTY_PATH);
+                String path = jget(o, PROPERTY_PATH);
                 String via = jget(o, PROPERTY_VIA);
                 String context = jget(o, PROPERTY_CONTEXT);
                 UURI uuri = UURIFactory.getInstance(uri);
@@ -566,6 +579,10 @@ public class HttpHeadquarterAdapter {
                     viaContext = HTMLLinkContext.get(context);
                 }
                 CrawlURI curi = new CrawlURI(uuri, path, viaUuri, viaContext);
+                String id = jget(o, PROPERTY_ID);
+                if (id != null) {
+                    curi.getData().put(DATAKEY_ID, id);
+                }
                 // content-digest and last-modified comes in data object.
                 JSONObject data = o.optJSONObject(PROPERTY_DATA);
                 if (data != null) {

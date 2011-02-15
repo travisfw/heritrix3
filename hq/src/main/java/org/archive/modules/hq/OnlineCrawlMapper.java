@@ -77,8 +77,8 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
 
     protected final AtomicBoolean discoveredSending = new AtomicBoolean(false);
     
-    protected int discoveredBatchSize = 50;
-    protected int discoveredBatchSizeMargin = 30;
+    protected int discoveredBatchSize = 100;
+    protected int discoveredBatchSizeMargin = 50;
     
     protected Thread discoveredFlushThread;
     
@@ -170,7 +170,13 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle {
     public int getDiscoveredBatchSize() {
         return discoveredBatchSize;
     }
-
+    public void setDiscoveredBatchSizeMargin(int discoveredBatchSizeMargin) {
+        this.discoveredBatchSizeMargin = discoveredBatchSizeMargin;
+    }
+    public int getDiscoveredBatchSizeMargin() {
+        return discoveredBatchSizeMargin;
+    }
+    
     protected void schedule(CrawlURI curi) {
         // WorkQueueFrontier.processScheduleAlways() (called from receive())
         // assumes CrawlURI.classKey is non-null. schedule() calls prepare()

@@ -42,11 +42,24 @@ public class HttpPersistProcessor extends Processor implements Lifecycle {
     HttpHeadquarterAdapter client;
     
     protected final BlockingQueue<CrawlURI> finishedQueue;
-    protected int finishedBatchSize = 20;
-    protected int finishedBatchSizeMargin = 20;
+    protected int finishedBatchSize = 40;
+    protected int finishedBatchSizeMargin = 30;
     protected Thread finishedFlushThread;
     
     boolean running;
+    
+    public void setFinishedBatchSize(int finishedBatchSize) {
+        this.finishedBatchSize = finishedBatchSize;
+    }
+    public int getFinishedBatchSize() {
+        return finishedBatchSize;
+    }
+    public void setFinishedBatchSizeMargin(int finishedBatchSizeMargin) {
+        this.finishedBatchSizeMargin = finishedBatchSizeMargin;
+    }
+    public int getFinishedBatchSizeMargin() {
+        return finishedBatchSizeMargin;
+    }
     
     public class Submitter implements Runnable {
         @Override
