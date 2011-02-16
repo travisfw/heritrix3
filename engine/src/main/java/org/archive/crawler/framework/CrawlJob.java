@@ -85,6 +85,7 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener {
 
     File primaryConfig; 
     PathSharingContext ac; 
+    volatile boolean acReady;
     int launchCount; 
     boolean isLaunchInfoPartial;
     DateTime lastLaunch;
@@ -214,7 +215,7 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener {
         if(isProfile()) {
             pw.println("(profile)");
         }
-        if(hasApplicationContext()) {
+        if(isApplicationContextReady()) {
             pw.println("&laquo;"+getJobStatusDescription()+"&raquo;");
         }
         if (true == isLaunchInfoPartial) {
@@ -353,6 +354,13 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener {
         return ac!=null;
     }
     
+    public boolean hasApplicationContextNoBlock() {
+        return ac != null;
+    }
+    public boolean isApplicationContextReady() {
+        return ac != null && acReady;
+    }
+    
     /**
      * Does the assembled ApplicationContext self-validate? Any failures
      * are reported as WARNING log events in the job log. 
@@ -372,6 +380,7 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener {
                LOGGER.log(Level.WARNING,err.toString());
             }
         }
+        acReady = true;
     }
 
     /**
@@ -529,6 +538,7 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener {
      */
     public synchronized boolean teardown() {
         if(ac!=null) {
+            acReady = false;
             CrawlController cc = getCrawlController();
             if(cc!=null) {
                 cc.requestCrawlStop();
@@ -658,7 +668,7 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener {
      * @return true if launchable
      */
     public boolean isLaunchable() {
-        if (!hasApplicationContext()) {
+        if (!hasApplicationContextNoBlock()) {
             // ok to try launch if not yet built
             return true; 
         }
@@ -895,8 +905,10 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener {
     }
     
     public String getJobStatusDescription() {
-        if(!hasApplicationContext()) {
+        if(!hasApplicationContextNoBlock()) {
             return "Unbuilt";
+        } else if (!acReady) {
+            return "Initializing";
         } else if(isRunning()) {
             return "Active: "+getCrawlController().getState();
         } else if(isLaunchable()){

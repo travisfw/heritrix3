@@ -175,7 +175,7 @@ public class EngineResource extends BaseResource {
     protected HashMap<String, CrawlJob> getBuiltJobs() {
         HashMap<String,CrawlJob> builtJobs = new HashMap<String,CrawlJob>(); 
         for(Map.Entry<String,CrawlJob> entry : getEngine().getJobConfigs().entrySet()) {
-            if(entry.getValue().hasApplicationContext()) {
+            if(entry.getValue().isApplicationContextReady()) {
                 builtJobs.put(entry.getKey(),entry.getValue());
             }
         }

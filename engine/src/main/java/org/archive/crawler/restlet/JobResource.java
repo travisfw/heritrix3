@@ -151,7 +151,7 @@ public class JobResource extends BaseResource {
             throw new RuntimeException(ioe); 
         }
         
-        if (cj.hasApplicationContext()) {
+        if (cj.isApplicationContextReady()) {
             info.put("uriTotalsReport", cj.uriTotalsReportData());
             info.put("sizeTotalsReport", cj.sizeTotalsReportData());
             info.put("rateReport", cj.rateReportData());
@@ -193,7 +193,7 @@ public class JobResource extends BaseResource {
     protected Set<String> getAvailableActions() {
         Set<String> actions = new LinkedHashSet<String>();
         
-        if (!cj.hasApplicationContext()) {
+        if (!cj.hasApplicationContextNoBlock()) {
             actions.add("build");
         }
         if (!cj.isProfile() && cj.isLaunchable()) {
@@ -211,7 +211,7 @@ public class JobResource extends BaseResource {
         if (cj.isRunning()) {
             actions.add("terminate");
         }
-        if (cj.hasApplicationContext()) {
+        if (cj.isApplicationContextReady()) {
             actions.add("teardown");
         }
         
@@ -258,7 +258,7 @@ public class JobResource extends BaseResource {
         pw.println("<div style='white-space:nowrap'><form method='POST'>");
         // PREP, LAUNCH
         pw.print("<input type='submit' name='action' value='build' ");
-        pw.print(cj.hasApplicationContext()?"disabled='disabled' title='build job'":"");
+        pw.print(cj.hasApplicationContextNoBlock()?"disabled='disabled' title='build job'":"");
         pw.println("/>");
         pw.print("<input type='submit' name='action' value='launch'");
         if(cj.isProfile()) {
