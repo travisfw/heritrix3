@@ -444,6 +444,7 @@ implements Closeable,
                 logger.log(Level.FINE,
                         "queue readied: " + wq.getClassKey());
             }
+            queueReadiedCount.incrementAndGet();
             readyLock.lock();
             try {
                 queueReady.signal();
@@ -1270,6 +1271,7 @@ implements Closeable,
         map.put("retiredQueues", retiredCount);
         map.put("exhaustedQueues", exhaustedCount);
         map.put("lastReachedState", lastReachedState);
+        map.put("queueReadiedCount", queueReadiedCount.get());
 
         return map;
     }

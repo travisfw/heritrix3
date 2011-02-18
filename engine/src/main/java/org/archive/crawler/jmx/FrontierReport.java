@@ -48,6 +48,8 @@ public class FrontierReport extends ReportBean {
     private long deepestUri;
     private long averageDepth;
     
+    private long queueReadiedCount;
+    
     public FrontierReport(Frontier frontier) {
         Map<String, Object> map = frontier.shortReportMap();
         this.totalQueues = getInt(map, "totalQueues");
@@ -75,7 +77,9 @@ public class FrontierReport extends ReportBean {
         
         this.congestionRatio = frontier.congestionRatio();
         this.deepestUri = frontier.deepestUri();
-        this.averageDepth = frontier.averageDepth();        
+        this.averageDepth = frontier.averageDepth();  
+        
+        this.queueReadiedCount = getLong(map, "queueReadiedCount");
     }
     public int getTotalQueues() {
         return totalQueues;
@@ -149,6 +153,9 @@ public class FrontierReport extends ReportBean {
     }
     public long getAverageDepth() {
         return averageDepth;
+    }
+    public long getQueueReadiedCount() {
+        return queueReadiedCount;
     }
     
 }

@@ -260,6 +260,12 @@ public abstract class AbstractFrontier
     protected AtomicLong totalProcessedBytes = new AtomicLong(0);
 
     /**
+     * count of queues getting readied. per-second count
+     * is useful for determining whether there's enough active
+     * queues.
+     */
+    protected AtomicLong queueReadiedCount = new AtomicLong(0);
+    /**
      * Crawl replay logger.
      * 
      * Currently captures Frontier/URI transitions.
