@@ -178,8 +178,8 @@ public class HttpHeadquarterAdapter {
     
     public void mfinished(CrawlURI[] uris) {
         HttpPost post = new HttpPost(getMultiFinishedURL());
+        JSONArray juris = new JSONArray();
         try {
-            JSONArray juris = new JSONArray();
             for (CrawlURI uri : uris) {
                 // allow partially filled array
                 if (uri == null) continue;
@@ -188,6 +188,15 @@ public class HttpHeadquarterAdapter {
                 juri.put(PROPERTY_DATA, getFinishedData(uri));
                 juris.put(juri);
             }
+        } catch (JSONException ex) {
+            logger.warning("unexpected error building JSON for CrawlURIs:");
+            for (CrawlURI curi : uris) {
+                if (curi == null) break;
+                logger.warning("  " + curi);
+            }
+            return;
+        }
+        try {
             // sending JSON text as entity for compactness
             // TODO: consider using BSON for even smaller payload
             // TODO: reuse ByteArrayOutputStream instead of creating anew every time?
@@ -220,20 +229,14 @@ public class HttpHeadquarterAdapter {
                 logger.warning("failed to parse mfinished response as JSON:" + responseText);
             } 
         } catch (JSONException ex) {
-            logger.warning(uris.length + " URIs not stored due to an error: " + ex);
-            for (CrawlURI uri : uris) {
-                logger.warning("  " + uri.toString());
-            }
+            logger.warning(juris.length() + " URIs not stored due to an error: " + ex);
+            logger.warning(juris.toString());
         } catch (ClientProtocolException ex) {
-            logger.warning(uris.length + " URIs not stored due to an error: " + ex);
-            for (CrawlURI uri : uris) {
-                logger.warning("  " + uri.toString());
-            }
+            logger.warning(juris.length() + " URIs not stored due to an error: " + ex);
+            logger.warning(juris.toString());
         } catch (IOException ex) {
-            logger.warning(uris.length + " URIs not stored due to an error: " + ex);
-            for (CrawlURI uri : uris) {
-                logger.warning("  " + uri.toString());
-            }            
+            logger.warning(juris.length() + " URIs not stored due to an error: " + ex);
+            logger.warning(juris.toString());
         }
     }
     

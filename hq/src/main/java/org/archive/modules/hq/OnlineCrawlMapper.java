@@ -24,7 +24,9 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
@@ -92,12 +94,22 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriRece
     
     protected volatile boolean running;
     
+    private final AtomicLong discoveredSubmitCount = new AtomicLong(0);
+    public long getDiscoveredSubmitCount() {
+        return discoveredSubmitCount.get();
+    }
+    private final AtomicLong discoveredSubmitMS = new AtomicLong(0);
+    public long getDiscoveredSubmitMS() {
+        return discoveredSubmitMS.get();
+    }
+    
     public class Submitter implements Runnable {
         @Override
         public void run() {
             CrawlURI[] bucket = new CrawlURI[discoveredBatchSize + discoveredBatchSizeMargin];
             while (running || !discoveredQueue.isEmpty()) {
                 Arrays.fill(bucket, null);
+                int count = 0;
                 for (int i = 0; i < bucket.length; i++) {
                     // wait up to 2 seconds to fill up discoveredBatchSize
                     try {
@@ -105,19 +117,23 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriRece
                         CrawlURI curi = discoveredQueue.poll(wait, TimeUnit.SECONDS);
                         if (curi == null) break;
                         bucket[i] = curi;
+                        count++;
                     } catch (InterruptedException ex) {
                         break;
                     }
                 }
-                if (bucket[0] != null) {
+                if (count > 0) {
                     long t0 = System.currentTimeMillis();
                     if (logger.isLoggable(Level.FINE))
                         logger.fine("submitting discovered");
                     client.mdiscovered(bucket);
+                    long ms = System.currentTimeMillis() - t0;
+                    discoveredSubmitMS.addAndGet(ms);
                     if (logger.isLoggable(Level.FINE))
-                        logger.fine("submission done in "
-                                + (System.currentTimeMillis() - t0)
-                                + "ms, discoveredQueue.size=" + discoveredQueue.size());
+                        logger.fine("submission done in " + ms
+                                + "ms, discoveredQueue.size="
+                                + discoveredQueue.size());
+                    discoveredSubmitCount.addAndGet(count);
                 }
             }
         }
@@ -266,8 +282,14 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriRece
         }
     }
     
+    private final AtomicLong discoveredQueuedCount = new AtomicLong(0);
+    public long getDiscoveredQueuedCount() {
+        return discoveredQueuedCount.get();
+    }
+    
     protected void queueDiscovered(CrawlURI curi) {
         // send all CrawlURI to the central server
+        discoveredQueuedCount.incrementAndGet();
         if (running) {
             // flush thread is active. queue and leave.
             if (logger.isLoggable(Level.FINE))
@@ -285,35 +307,65 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriRece
         }
     }
     
-    private Lock feedLock = new ReentrantLock();
+    private final Lock feedLock;
+    private final Condition feedDone;
+    {
+        feedLock = new ReentrantLock();
+        feedDone = feedLock.newCondition();
+    }
+    private AtomicInteger feedWaitingCount = new AtomicInteger(0);
+    
+    private final AtomicLong feedCount = new AtomicLong(0);
+    public long getFeedCount() {
+        return feedCount.get();
+    }
     
     /**
      * {@inheritDoc}
      */
     @Override
     public long requestFlush() {
-        long count = 0;
         if (feedLock.tryLock()) {
+            int n = feedWaitingCount.get();
+            // n < 0 should not happen, but just in case.
+            if (n < 0) n = 0;
             try {
                 int safeTotalNodes = totalNodes > 0 ? totalNodes : 1;
                 if (logger.isLoggable(Level.FINE))
                     logger.fine("running getCrawlURIs()");
                 long t0 = System.currentTimeMillis();
-                CrawlURI[] uris = client.getCrawlURIs(nodeNo, safeTotalNodes, feedBatchSize);
+                // TODO: make factor "10" configurable 
+                CrawlURI[] uris = client.getCrawlURIs(nodeNo, safeTotalNodes, feedBatchSize + n * 10);
                 if (logger.isLoggable(Level.FINE))
                     logger.fine("getCrawlURIs() done in " + (System.currentTimeMillis() - t0) +
                             "ms, " + uris.length + " URIs");
+                long count = feedCount.get();
                 for (CrawlURI uri : uris) {
                     if (uri != null) {
                         schedule(uri);
-                        ++count;
+                        feedCount.incrementAndGet();
                     }
                 }
+                while (n > 0) {
+                    feedDone.notify();
+                    n--;
+                }
+                return feedCount.get() - count;
             } finally {
                 feedLock.unlock();
             }
+        } else {
+            feedWaitingCount.incrementAndGet();
+            try {
+                long count = feedCount.get();
+                feedDone.await();
+                return feedCount.get() - count;
+            } catch (InterruptedException ex) {
+                return 0;
+            } finally {
+                feedWaitingCount.decrementAndGet();
+            }
         }
-        return count;
     }
 
     @Override
@@ -342,6 +394,16 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriRece
 
     @Override
     public long addedCount() {
+        return addedCount.get();
+    }
+    
+    /**
+     * count of {@link CrawlURI} added.
+     * for JavaBean access (specifically JMX).
+     * @return count
+     * @see #add(String, CrawlURI)
+     */
+    public long getAddedCount() {
         return addedCount.get();
     }
     
@@ -399,6 +461,7 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriRece
         }
         running = true;
         discoveredFlushThread = new Thread(new Submitter());
+        discoveredFlushThread.setName("DiscoveredSubmitter");
         discoveredFlushThread.start();
     }
 
