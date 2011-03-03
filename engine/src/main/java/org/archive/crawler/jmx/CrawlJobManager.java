@@ -3,10 +3,10 @@ package org.archive.crawler.jmx;
 import java.io.IOException;
 import java.util.Map;
 
+import org.archive.crawler.datamodel.UriUniqFilter;
 import org.archive.crawler.framework.CrawlController;
 import org.archive.crawler.framework.CrawlJob;
 import org.archive.crawler.framework.Engine;
-import org.archive.modules.fetcher.FetchHTTP;
 import org.archive.modules.writer.WARCWriterProcessor;
 import org.springframework.context.ApplicationContext;
 
@@ -161,17 +161,23 @@ public class CrawlJobManager implements CrawlJobMXBean {
         CrawlJob j = getJobChecked();
         ApplicationContext ac = j.getJobContext();
         if (ac == null) return null;
-        Map<?,?> warcWriters = ac.getBeansOfType(beanType);
-        if (warcWriters.isEmpty())
+        Map<?,?> beans = ac.getBeansOfType(beanType);
+        if (beans.isEmpty())
             return null;
         else
-            return beanType.cast(warcWriters.values().iterator().next());
+            return beanType.cast(beans.values().iterator().next());
     }
     
-    public WARCWriterReport getWarcWriter() throws IOException {
+    public ReflectionReportBean getWarcWriter() throws IOException {
         WARCWriterProcessor bean = getBean1(WARCWriterProcessor.class);
         if (bean == null) return null;
-        return new WARCWriterReport(bean);
+        return new ReflectionReportBean(bean);
     }
     
+    @Override
+    public ReflectionReportBean getUriUniqFilter() throws IOException {
+        UriUniqFilter bean = getBean1(UriUniqFilter.class);
+        if (bean == null) return null;
+        return new ReflectionReportBean(bean);
+    }
 }

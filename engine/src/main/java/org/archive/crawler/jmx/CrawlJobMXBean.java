@@ -2,9 +2,8 @@ package org.archive.crawler.jmx;
 
 import java.io.IOException;
 
+import org.archive.crawler.datamodel.UriUniqFilter;
 import org.archive.crawler.framework.CrawlJob;
-import org.archive.modules.fetcher.FetchHTTP;
-import org.archive.modules.writer.WARCWriterProcessor;
 
 /**
  * MXBean interface for offering statistics of crawl jobs.
@@ -61,6 +60,8 @@ public interface CrawlJobMXBean {
 
     // tentative interfaces
     
-    public WARCWriterReport getWarcWriter() throws IOException;
+    public ReflectionReportBean getWarcWriter() throws IOException;
+    
+    public ReflectionReportBean getUriUniqFilter() throws IOException;
 
 }
