@@ -686,7 +686,8 @@ implements Closeable,
                                             activateInactiveQueue();
                                             if (logger.isLoggable(Level.FINE))
                                                 logger.fine(String.format("activateInactiveQueue took %dms", System.currentTimeMillis() - t1));
-                                            key = readyClassQueues.poll();
+                                            //key = readyClassQueues.poll();
+                                            continue;
                                         }
                                     }
                                     // if no inactive queue could be activated, sleep until signaled for situation change,
@@ -894,6 +895,12 @@ implements Closeable,
                     updateHighestWaiting(expectedPrecedence);
                     try {
                         readyClassQueues.put(key);
+                        readyLock.lock();
+                        try {
+                            queueReady.signal();
+                        } finally {
+                            readyLock.unlock();
+                        }
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e); 
                     } 

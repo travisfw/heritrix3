@@ -24,9 +24,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
@@ -307,64 +305,40 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriRece
         }
     }
     
-    private final Lock feedLock;
-    private final Condition feedDone;
-    {
-        feedLock = new ReentrantLock();
-        feedDone = feedLock.newCondition();
-    }
-    private AtomicInteger feedWaitingCount = new AtomicInteger(0);
+    private final Lock feedLock = new ReentrantLock();
     
     private final AtomicLong feedCount = new AtomicLong(0);
     public long getFeedCount() {
         return feedCount.get();
     }
     
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public long requestFlush() {
         if (feedLock.tryLock()) {
-            int n = feedWaitingCount.get();
-            // n < 0 should not happen, but just in case.
-            if (n < 0) n = 0;
             try {
                 int safeTotalNodes = totalNodes > 0 ? totalNodes : 1;
                 if (logger.isLoggable(Level.FINE))
                     logger.fine("running getCrawlURIs()");
                 long t0 = System.currentTimeMillis();
                 // TODO: make factor "10" configurable 
-                CrawlURI[] uris = client.getCrawlURIs(nodeNo, safeTotalNodes, feedBatchSize + n * 10);
+                CrawlURI[] uris = client.getCrawlURIs(nodeNo, safeTotalNodes, feedBatchSize);
                 if (logger.isLoggable(Level.FINE))
                     logger.fine("getCrawlURIs() done in " + (System.currentTimeMillis() - t0) +
                             "ms, " + uris.length + " URIs");
-                long count = feedCount.get();
+                long count = 0;
                 for (CrawlURI uri : uris) {
                     if (uri != null) {
                         schedule(uri);
-                        feedCount.incrementAndGet();
+                        count++;
                     }
                 }
-                while (n > 0) {
-                    feedDone.notify();
-                    n--;
-                }
-                return feedCount.get() - count;
+                feedCount.addAndGet(count);
+                return count;
             } finally {
                 feedLock.unlock();
             }
         } else {
-            feedWaitingCount.incrementAndGet();
-            try {
-                long count = feedCount.get();
-                feedDone.await();
-                return feedCount.get() - count;
-            } catch (InterruptedException ex) {
-                return 0;
-            } finally {
-                feedWaitingCount.decrementAndGet();
-            }
+            return 0;
         }
     }
 
