@@ -435,17 +435,20 @@ public class HttpHeadquarterAdapter {
         } catch (JSONException ex) {
             logger.warning(uris.length + " URIs not stored due to an error: " + ex);
             for (CrawlURI uri : uris) {
-                logger.warning("  " + uri.toString());
+                if (uri != null)
+                    logger.warning("  " + uri.toString());
             }
         } catch (ClientProtocolException ex) {
             logger.warning(uris.length + " URIs not stored due to an error: " + ex);
             for (CrawlURI uri : uris) {
-                logger.warning("  " + uri.toString());
+                if (uri != null)
+                    logger.warning("  " + uri.toString());
             }
         } catch (IOException ex) {
             logger.warning(uris.length + " URIs not stored due to an error: " + ex);
             for (CrawlURI uri : uris) {
-                logger.warning("  " + uri.toString());
+                if (uri != null)
+                    logger.warning("  " + uri.toString());
             }            
         }
     }
