@@ -676,6 +676,9 @@ implements Closeable,
                                             // into existing snoozed queues. retry flushing again,
                                             // but allow operator to pause the job by continuing outer
                                             // loop rather than looping here.
+                                            readyLock.lock();
+                                            try { queueReady.signalAll(); }
+                                            finally { readyLock.unlock(); }
                                             continue;
                                         }
                                     }
