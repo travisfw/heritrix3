@@ -145,11 +145,13 @@ public class Robotstxt implements Serializable {
                     // grouping of User-Agent lines
                     hasDirectivesYet = true;
                     String val = read.substring(12).trim();
-                    val = val.split("[^\\d\\.]+")[0];
-                    try {
-                        current.setCrawlDelay(Float.parseFloat(val));
-                    } catch (NumberFormatException nfe) {
-                        // ignore
+                    if (val.length() > 0) {
+                        val = val.split("[^\\d\\.]+")[0];
+                        try {
+                            current.setCrawlDelay(Float.parseFloat(val));
+                        } catch (NumberFormatException nfe) {
+                            // ignore
+                        }
                     }
                     continue;
                 }
