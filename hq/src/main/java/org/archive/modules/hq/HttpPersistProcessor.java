@@ -18,6 +18,7 @@
  */
 package org.archive.modules.hq;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -33,11 +34,13 @@ import org.springframework.context.Lifecycle;
 /**
  * HttpPersistProcessor notifies remote crawl manager of the completion of 
  * crawling one URI, along with metadata fetched, such as last-modified and
- * content-digest, throuh HTTP.
+ * content-digest, through HTTP.
  * @contributor kenji
  */
 public class HttpPersistProcessor extends Processor implements Lifecycle {
     private static final Logger logger = Logger.getLogger(HttpPersistProcessor.class.getName());
+    
+    public static final long RETRY_INTERVAL_MS = 30*1000;
 
     HttpHeadquarterAdapter client;
     
@@ -78,15 +81,42 @@ public class HttpPersistProcessor extends Processor implements Lifecycle {
                     }
                 }
                 if (bucket[0] != null) {
-                    long t0 = System.currentTimeMillis();
-                    if (logger.isLoggable(Level.FINE))
-                        logger.fine("submitting finished");
-                    client.mfinished(bucket);
-                    if (logger.isLoggable(Level.FINE))
-                        logger.fine("submission done in "
-                                + (System.currentTimeMillis() - t0)
-                                + "ms, finishedQueue.size="
-                                + finishedQueue.size());
+                    int retries = 0;
+                    while (true) {
+                        if (logger.isLoggable(Level.FINE)) {
+                            if (retries > 0)
+                                logger.fine("submitting finished (retry " + retries + ")");
+                            else
+                                logger.fine("submitting finished");
+                        }
+                        long t0 = System.currentTimeMillis();
+                        try {
+                            client.mfinished(bucket);
+                            if (logger.isLoggable(Level.FINE))
+                                logger.fine("submission done in "
+                                        + (System.currentTimeMillis() - t0)
+                                        + "ms, finishedQueue.size="
+                                        + finishedQueue.size());
+                            break;
+                        } catch (IOException ex) {
+                            logger.warning("submitting finished failed: " + ex);
+                        }
+                        if (!running) {
+                            logger.severe("finished did not complete, lost URLs:");
+                            int i = 0;
+                            for (CrawlURI curi : bucket) {
+                                if (curi == null) continue;
+                                i++;
+                                logger.severe("  " + i + ":" + curi.getURI());
+                            }
+                            break;
+                        }
+                        retries++;
+                        try {
+                            Thread.sleep(RETRY_INTERVAL_MS);
+                        } catch (InterruptedException ex) {
+                        }
+                    }
                 }
             }
         }

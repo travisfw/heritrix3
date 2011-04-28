@@ -176,7 +176,7 @@ public class HttpHeadquarterAdapter {
         return header != null ? header.getValue() : null;
     }
     
-    public void mfinished(CrawlURI[] uris) {
+    public void mfinished(CrawlURI[] uris) throws IOException {
         HttpPost post = new HttpPost(getMultiFinishedURL());
         JSONArray juris = new JSONArray();
         try {
@@ -232,9 +232,6 @@ public class HttpHeadquarterAdapter {
             logger.warning(juris.length() + " URIs not stored due to an error: " + ex);
             logger.warning(juris.toString());
         } catch (ClientProtocolException ex) {
-            logger.warning(juris.length() + " URIs not stored due to an error: " + ex);
-            logger.warning(juris.toString());
-        } catch (IOException ex) {
             logger.warning(juris.length() + " URIs not stored due to an error: " + ex);
             logger.warning(juris.toString());
         }
@@ -367,7 +364,7 @@ public class HttpHeadquarterAdapter {
      * send multiple discovered URIs to Headquarters in a batch
      * @param uris array of CrawlURIs. null elements are allowed and simply ignored.
      */
-    public void mdiscovered(CrawlURI[] uris) {
+    public void mdiscovered(CrawlURI[] uris) throws IOException {
         HttpPost post = new HttpPost(getMultiDiscoveredURL());
         try {
             JSONArray juris = new JSONArray();
@@ -444,12 +441,6 @@ public class HttpHeadquarterAdapter {
                 if (uri != null)
                     logger.warning("  " + uri.toString());
             }
-        } catch (IOException ex) {
-            logger.warning(uris.length + " URIs not stored due to an error: " + ex);
-            for (CrawlURI uri : uris) {
-                if (uri != null)
-                    logger.warning("  " + uri.toString());
-            }            
         }
     }
     

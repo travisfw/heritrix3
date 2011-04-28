@@ -19,6 +19,7 @@
 package org.archive.modules.hq;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -58,6 +59,8 @@ import org.springframework.context.Lifecycle;
  */
 public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriReceiver {
     private static final Logger logger = Logger.getLogger(OnlineCrawlMapper.class.getName());
+    
+    public static final long RETRY_INTERVAL_MS = 30*1000;
     
     private HttpHeadquarterAdapter client;
     
@@ -121,17 +124,44 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriRece
                     }
                 }
                 if (count > 0) {
-                    long t0 = System.currentTimeMillis();
-                    if (logger.isLoggable(Level.FINE))
-                        logger.fine("submitting discovered");
-                    client.mdiscovered(bucket);
-                    long ms = System.currentTimeMillis() - t0;
-                    discoveredSubmitMS.addAndGet(ms);
-                    if (logger.isLoggable(Level.FINE))
-                        logger.fine("submission done in " + ms
-                                + "ms, discoveredQueue.size="
-                                + discoveredQueue.size());
-                    discoveredSubmitCount.addAndGet(count);
+                    int retries = 0;
+                    while (true) {
+                        if (logger.isLoggable(Level.FINE)) {
+                            if (retries > 0)
+                                logger.fine("submiting discovered (retry " + retries + ")");
+                            else
+                                logger.fine("submitting discovered");
+                        }
+                        long t0 = System.currentTimeMillis();
+                        try {
+                            client.mdiscovered(bucket);
+                            long ms = System.currentTimeMillis() - t0;
+                            discoveredSubmitMS.addAndGet(ms);
+                            if (logger.isLoggable(Level.FINE))
+                                logger.fine("submission done in " + ms
+                                        + "ms, discoveredQueue.size="
+                                        + discoveredQueue.size());
+                            discoveredSubmitCount.addAndGet(count);
+                            break;
+                        } catch (IOException ex) {
+                            logger.warning("submitting discovered failed: " + ex);
+                        }
+                        if (!running) {
+                            logger.severe("discovered did not complete, lost URLs:");
+                            int i = 0;
+                            for (CrawlURI curi : bucket) {
+                                if (curi == null) continue;
+                                i++;
+                                logger.severe("  " + i + ":" + curi.getURI());
+                            }
+                            break;
+                        }
+                        retries++;
+                        try {
+                            Thread.sleep(RETRY_INTERVAL_MS);
+                        } catch (InterruptedException ex) {
+                        }
+                    }
                 }
             }
         }
