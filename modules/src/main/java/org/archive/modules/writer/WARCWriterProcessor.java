@@ -672,7 +672,7 @@ public class WARCWriterProcessor extends WriterPoolProcessor {
     public String report() {
         logger.info("final stats: " + stats);
         
-        StringBuilder buf = new StringBuilder();
+        StringBuilder buf = new StringBuilder(super.report());
         buf.append("Processor: " + getClass().getName() + "\n");
         buf.append("  Function:          Writes WARCs\n");
         buf.append("  Total CrawlURIs:   " + urlsWritten + "\n");
