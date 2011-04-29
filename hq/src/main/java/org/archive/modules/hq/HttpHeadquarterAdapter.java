@@ -78,9 +78,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class HttpHeadquarterAdapter {
     private static final Logger logger = Logger.getLogger(HttpHeadquarterAdapter.class.getName());
 
-    // for feed
+    // for feed and finished
     private HttpClient httpClient1;
-    // for finished and discovered
+    // for discovered
     private HttpClient httpClient2;
     
     // for getting job name
@@ -211,8 +211,8 @@ public class HttpHeadquarterAdapter {
                 logger.fine("submitting " + juris.length() + " URIs to mfinished");
             }
             String responseText = null;
-            synchronized (httpClient2) {
-                HttpResponse response = httpClient2.execute(post);
+            synchronized (httpClient1) {
+                HttpResponse response = httpClient1.execute(post);
                 HttpEntity re = response.getEntity();
                 responseText = EntityUtils.toString(re);
             }
@@ -342,10 +342,10 @@ public class HttpHeadquarterAdapter {
             UrlEncodedFormEntity entity = new UrlEncodedFormEntity(params);
             post.setEntity(entity);
             String responseText = null;
-            synchronized (httpClient2) {
+            synchronized (httpClient1) {
                 if (logger.isLoggable(Level.FINE))
                     logger.fine("invoking PUT " + post.getURI());
-                HttpResponse response = httpClient2.execute(post);
+                HttpResponse response = httpClient1.execute(post);
                 HttpEntity re = response.getEntity();
                 responseText = EntityUtils.toString(re);
             }

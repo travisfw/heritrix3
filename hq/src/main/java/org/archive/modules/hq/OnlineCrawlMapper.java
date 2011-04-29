@@ -114,7 +114,7 @@ public class OnlineCrawlMapper implements UriUniqFilter, Lifecycle, CrawlUriRece
                 for (int i = 0; i < bucket.length; i++) {
                     // wait up to 2 seconds to fill up discoveredBatchSize
                     try {
-                        long wait = i < discoveredBatchSize ? 2 : 0;
+                        long wait = i < discoveredBatchSize ? 1 : 0;
                         CrawlURI curi = discoveredQueue.poll(wait, TimeUnit.SECONDS);
                         if (curi == null) break;
                         bucket[i] = curi;
