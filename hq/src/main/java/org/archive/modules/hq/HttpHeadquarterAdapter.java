@@ -315,9 +315,13 @@ public class HttpHeadquarterAdapter {
             if (lastmod_sec != 0)
                 data.put(PROPERTY_LAST_MODIFIED, lastmod_sec);
         } else {
-            long completed = uri.getFetchCompletedTime();
-            if (completed != 0)
-                data.put(PROPERTY_LAST_MODIFIED, completed);
+            try {
+                long completed = uri.getFetchCompletedTime();
+                if (completed != 0)
+                    data.put(PROPERTY_LAST_MODIFIED, completed);
+            } catch (NullPointerException ex) {
+                logger.warning("CrawlURI.getFetchCompletedTime():" + ex);
+            }
         }
         return data;
     }
