@@ -53,7 +53,7 @@ import org.springframework.beans.BeanWrapperImpl;
  * @contributor Gojomo
  * @contributor nlevitt
  */
-public abstract class JobRelatedResource extends Resource {
+public abstract class JobRelatedResource extends BaseResource {
     CrawlJob cj; 
 
     IdentityHashMap<Object, String> beanToNameMap;
