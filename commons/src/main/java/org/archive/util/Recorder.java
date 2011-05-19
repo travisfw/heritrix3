@@ -509,9 +509,12 @@ public class Recorder {
             InputStreamReader isr =  new InputStreamReader(getContentReplayInputStream(), charset);
             char[] chars = new char[size];
             int count = isr.read(chars);
-            isr.close();
-            if (count < 0) return "";
-            return new String(chars,0,count);
+            isr.close(); 
+            if (count > 0) {
+                return new String(chars,0,count);
+            } else {
+                return "";
+            }
         } catch (IOException e) {
             logger.log(Level.SEVERE,"unable to get replay prefix string", e);
             return ""; 
