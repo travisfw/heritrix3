@@ -55,6 +55,7 @@ import java.util.regex.Pattern;
 
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.httpclient.URIException;
+import org.archive.crawler.datamodel.UriUniqFilter.CrawlUriReceiver;
 import org.archive.crawler.event.CrawlStateEvent;
 import org.archive.crawler.framework.CrawlController;
 import org.archive.crawler.framework.Frontier;
@@ -91,6 +92,7 @@ public abstract class AbstractFrontier
                SeedListener, 
                HasKeyedProperties,
                ExtractorParameters,
+               CrawlUriReceiver,
                ApplicationListener {
     private static final long serialVersionUID = 555881755284996860L;
     private static final Logger logger = Logger
