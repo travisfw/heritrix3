@@ -579,6 +579,9 @@ public class HttpHeadquarterAdapter {
                     // ref. CrawlURI#fromHopsViaString(String)
                     viaContext = HTMLLinkContext.get(context);
                 }
+                // path must not be null, or you'll get NullPointerException
+                // from some of CrawlURI methods.
+                if (path == null) path = "";
                 CrawlURI curi = new CrawlURI(uuri, path, viaUuri, viaContext);
                 String id = jget(o, PROPERTY_ID);
                 if (id != null) {
