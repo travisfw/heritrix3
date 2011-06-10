@@ -45,6 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -617,6 +618,55 @@ implements Closeable,
         return false;
     }
     
+    private int pullTriggerLevel = 100;
+    public void setPullTriggerLevel(int pullTriggerLevel) {
+        this.pullTriggerLevel = pullTriggerLevel;
+    }
+    public int getPullTriggerLevel() {
+        return pullTriggerLevel;
+    }
+    private final AtomicBoolean pulling = new AtomicBoolean();
+    
+    /**
+     * called when readyClassQueue becomes low, pulls more URIs into crawler.
+     * @return true if this thread should check the level again.
+     */
+    protected boolean pullURIs() {
+        // we want only one thread work on this task. other thread should go ahead and
+        // wait on readyClassQueue.
+        if (!pulling.compareAndSet(false, true)) return false;
+        
+        try {
+            // first try pulling from local InactiveQueue
+            if (!getInactiveQueuesByPrecedence().isEmpty() && highestPrecedenceWaiting < getPrecedenceFloor()) {
+                if (activateInactiveQueue()) {
+                    return true;
+                }
+            }
+            // then trigger pull from external source.
+            long t2 = System.currentTimeMillis();
+            long nflushed = uriUniqFilter.requestFlush();
+            if (logger.isLoggable(Level.FINE))
+                logger.fine("UriUniqFilter flushed: "
+                        + nflushed + " in "
+                        + (System.currentTimeMillis() - t2)
+                        + "ms");
+            if (nflushed == 0) return false;
+//            if (nflushed > 0) {
+//                // if URLs got flushed, check readyClassQueue again.
+//                // if no queues are ready, probably all URLs have gone
+//                // into existing snoozed queues. retry flushing again,
+//                // but allow operator to pause the job by continuing outer
+//                // loop rather than looping here.
+//                readyLock.lock();
+//                try { queueReady.signalAll(); }
+//                finally { readyLock.unlock(); }
+//            }
+        } finally {
+            pulling.set(false);
+        }
+        return true;
+    }
     /**
      * Return the next CrawlURI eligible to be processed (and presumably
      * visited/fetched) by a a worker thread.
@@ -649,41 +699,51 @@ implements Closeable,
                             // XXX WorkQueueFrontier should not make direct reference
                             // to targetState
                             if (targetState == State.RUN) {
+                                // if size of readyClassQueue dropped below configured level,
+                                // trigger "pulling" so that more queues will become ready before
+                                // readyClassQueue gets exhausted.
+                                int readyLevel = readyClassQueues.size();
+                                if (readyLevel < pullTriggerLevel) {
+                                    if (pullURIs())
+                                        continue;
+                                }
                                 key = readyClassQueues.poll();
                                 if (key == null) {
-                                    // TODO: trigger by low number, not zero
-                                    if (!hasInactiveQueues()) {
-                                        // try flushing UriUniqFilter and try activation again.
-                                        long t2 = System.currentTimeMillis();
-                                        long nflushed = uriUniqFilter.requestFlush();
-                                        if (logger.isLoggable(Level.FINE))
-                                            logger.fine("UriUniqFilter flushed: "
-                                                    + nflushed + " in "
-                                                    + (System.currentTimeMillis() - t2)
-                                                    + "ms");
-                                        if (nflushed > 0) {
-                                            // if URLs got flushed, check readyClassQueue again.
-                                            // if no queues are ready, probably all URLs have gone
-                                            // into existing snoozed queues. retry flushing again,
-                                            // but allow operator to pause the job by continuing outer
-                                            // loop rather than looping here.
-                                            readyLock.lock();
-                                            try { queueReady.signalAll(); }
-                                            finally { readyLock.unlock(); }
-                                            continue;
-                                        }
-                                    }
-                                    if (key == null) {
-                                        // no ready queues; try to activate one
-                                        if (!getInactiveQueuesByPrecedence().isEmpty() && highestPrecedenceWaiting < getPrecedenceFloor()) {
-                                            long t1 = System.currentTimeMillis();
-                                            activateInactiveQueue();
-                                            if (logger.isLoggable(Level.FINE))
-                                                logger.fine(String.format("activateInactiveQueue took %dms", System.currentTimeMillis() - t1));
-                                            //key = readyClassQueues.poll();
-                                            continue;
-                                        }
-                                    }
+                                    if (pullURIs())
+                                        continue;
+//                                    // TODO: trigger by low number, not zero
+//                                    if (!hasInactiveQueues()) {
+//                                        // try flushing UriUniqFilter and try activation again.
+//                                        long t2 = System.currentTimeMillis();
+//                                        long nflushed = uriUniqFilter.requestFlush();
+//                                        if (logger.isLoggable(Level.FINE))
+//                                            logger.fine("UriUniqFilter flushed: "
+//                                                    + nflushed + " in "
+//                                                    + (System.currentTimeMillis() - t2)
+//                                                    + "ms");
+//                                        if (nflushed > 0) {
+//                                            // if URLs got flushed, check readyClassQueue again.
+//                                            // if no queues are ready, probably all URLs have gone
+//                                            // into existing snoozed queues. retry flushing again,
+//                                            // but allow operator to pause the job by continuing outer
+//                                            // loop rather than looping here.
+//                                            readyLock.lock();
+//                                            try { queueReady.signalAll(); }
+//                                            finally { readyLock.unlock(); }
+//                                            continue;
+//                                        }
+//                                    }
+//                                    if (key == null) {
+//                                        // no ready queues; try to activate one
+//                                        if (!getInactiveQueuesByPrecedence().isEmpty() && highestPrecedenceWaiting < getPrecedenceFloor()) {
+//                                            long t1 = System.currentTimeMillis();
+//                                            activateInactiveQueue();
+//                                            if (logger.isLoggable(Level.FINE))
+//                                                logger.fine(String.format("activateInactiveQueue took %dms", System.currentTimeMillis() - t1));
+//                                            //key = readyClassQueues.poll();
+//                                            continue;
+//                                        }
+//                                    }
                                     // if no inactive queue could be activated, sleep until signaled for situation change,
                                     // and start over.
                                     if (key == null) {
