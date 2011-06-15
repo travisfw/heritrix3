@@ -364,7 +364,10 @@ public abstract class AbstractFrontier
         try {
             loop: while (true) {
                 try {
+                    State reachedState = null; 
                     switch (targetState) {
+                    case EMPTY:
+                        reachedState = State.EMPTY; 
                     case RUN:
                         // enable outbound takes if previously locked
 //                        while(outboundLock.isWriteLockedByCurrentThread()) {
@@ -376,11 +379,17 @@ public abstract class AbstractFrontier
                         // as CrawlURI become available.
                         queueReady.signal();
                         readyLock.unlock();
-                        reachedState(State.RUN);
+                        if(reachedState==null) {
+                            reachedState= State.RUN;
+                        }
+                        reachedState(reachedState);
                         do {
                             long nextWake = wakeQueues();
                             long delay = nextWake - System.currentTimeMillis();
                             if (delay > 0) {
+                                // currently snoozeUpdate is not triggered when crawler becomes
+                                // empty. until we implement it, limit sleep to max 1 seconds.
+                                if (delay > 1000) delay = 1000;
                                 if (logger.isLoggable(Level.FINE))
                                     logger.fine("suspending for " + delay + "ms");
                                 snoozeLock.lock();
@@ -393,12 +402,12 @@ public abstract class AbstractFrontier
                                 if (logger.isLoggable(Level.FINE))
                                     logger.fine("resumed");
                             }
-                            if (targetState == State.RUN && isEmpty()) {
-                                // pause when frontier exhausted; controller will
-                                // determine if this means to finish or not
-                                targetState = State.PAUSE;
+                            if(isEmpty()&&targetState==State.RUN) {
+                                targetState = State.EMPTY;
+                            } else if (!isEmpty()&&targetState==State.EMPTY) {
+                                targetState = State.RUN;
                             }
-                        } while (targetState == State.RUN);
+                        } while (targetState == reachedState);
                         break;
                     case HOLD:
                         // TODO; for now treat same as PAUSE
