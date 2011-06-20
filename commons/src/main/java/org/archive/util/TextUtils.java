@@ -106,6 +106,8 @@ public class TextUtils {
     }
 
     public static void recycleMatcher(Matcher m) {
+        // while cached, eliminate reference to potentially-large prior 'input'
+        m.reset(""); 
         MatcherThreadLocal tlv = null;
         //synchronized (PATTERN_MAP) {
             tlv = PATTERN_MAP.get(m.pattern().pattern());
