@@ -30,33 +30,35 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.lang.StringEscapeUtils;
 
+import com.google.common.base.Function;
+import com.google.common.collect.MapMaker;
+
 public class TextUtils {
     private static final String FIRSTWORD = "^([^\\s]*).*$";
 
-    private static class MatcherThreadLocal extends ThreadLocal<Matcher> {
-        private Pattern pattern;
-        public MatcherThreadLocal(Pattern pattern) {
-            this.pattern = pattern;
+    /** thread-local cached matchers, by string key */
+    private static final ThreadLocal<Map<String,Matcher>> TL_MATCHER_MAP
+     = new ThreadLocal<Map<String,Matcher>>() {
+        protected Map<String,Matcher> initialValue() {
+            return new HashMap<String,Matcher>(50);
         }
-        protected Matcher initialValue() {
-            return pattern.matcher("");
-        }
-    }
-    private static final Map<String, MatcherThreadLocal> PATTERN_MAP = 
-        new ConcurrentHashMap<String, MatcherThreadLocal>();
-//        new HashMap<String, MatcherThreadLocal>();
-//    private static final ThreadLocal<Map<String,Matcher>> TL_MATCHER_MAP
-//     = new ThreadLocal<Map<String,Matcher>>() {
-//        protected Map<String,Matcher> initialValue() {
-//            return new HashMap<String,Matcher>(50);
-//        }
-//    };
+    };
+    
+    /** global soft-cache of Patterns, by string key */
+    private static final ConcurrentMap<String, Pattern> PATTERNS = new MapMaker()
+        .concurrencyLevel(16)
+        .softValues()
+        .makeComputingMap(new Function<String, Pattern>() {
+            public Pattern apply(String regex) {
+                return Pattern.compile(regex);
+            }
+        });
 
     /**
      * Get a matcher object for a precompiled regex pattern.
@@ -79,27 +81,12 @@ public class TextUtils {
             throw new IllegalArgumentException("String 'pattern' must not be null");
         }
         input = new InterruptibleCharSequence(input);
-        
-        MatcherThreadLocal tlv = null;
-        // TODO should use ConcurrentHashMap? even with 
-        // ConcurrentHashMap, multiple MatcherTheadLocal can be
-        // created if not synchronized. we could accept such waste
-        // in favor of less synchronization.
-        //synchronized (PATTERN_MAP) {
-            tlv = PATTERN_MAP.get(pattern);
-            if (tlv == null) {
-                Pattern p = Pattern.compile(pattern);
-                tlv = new MatcherThreadLocal(p);
-                PATTERN_MAP.put(pattern, tlv);
-            }
-        //}
-        Matcher m = tlv.get();
-        if (m == null) {
-            // many classes uses getMatcher() without matching recycleMatcher(),
-            // until we get all of those fixed, we need to support m == null case.
-            m = tlv.pattern.matcher(input);
+        final Map<String,Matcher> matchers = TL_MATCHER_MAP.get();
+        Matcher m = (Matcher)matchers.get(pattern);
+        if(m == null) {
+            m = PATTERNS.get(pattern).matcher(input);
         } else {
-            tlv.set(null);
+            matchers.put(pattern,null);
             m.reset(input);
         }
         return m;
@@ -108,17 +95,8 @@ public class TextUtils {
     public static void recycleMatcher(Matcher m) {
         // while cached, eliminate reference to potentially-large prior 'input'
         m.reset(""); 
-        MatcherThreadLocal tlv = null;
-        //synchronized (PATTERN_MAP) {
-            tlv = PATTERN_MAP.get(m.pattern().pattern());
-            if (tlv == null) {
-                tlv = new MatcherThreadLocal(m.pattern());
-                PATTERN_MAP.put(m.pattern().pattern(), tlv);
-            }
-        //}
-        tlv.set(m);
-//        final Map<String,Matcher> matchers = TL_MATCHER_MAP.get();
-//        matchers.put(m.pattern().pattern(),m);
+        final Map<String,Matcher> matchers = TL_MATCHER_MAP.get();
+        matchers.put(m.pattern().pattern(),m);
     }
     
     /**
