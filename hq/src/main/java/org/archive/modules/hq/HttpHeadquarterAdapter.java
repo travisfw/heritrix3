@@ -298,29 +298,37 @@ public class HttpHeadquarterAdapter {
         if (digest != null) {
             data.put(PROPERTY_CONTENT_DIGEST, digest);
         }
+        data.put(PROPERTY_STATUS, uri.getFetchStatus());
         org.apache.commons.httpclient.HttpMethod method = uri.getHttpMethod();
-        data.put(PROPERTY_STATUS, method.getStatusCode());
-        String etag = getHeaderValue(method, RecrawlAttributeConstants.A_ETAG_HEADER);
-        if (etag != null) {
-            // Etag is usually quoted
-            if (etag.length() >= 2 && etag.startsWith("\"") && etag.endsWith("\""))
-                etag = etag.substring(1, etag.length() - 1);
-            data.put(PROPERTY_ETAG, etag);
-        }
-        String lastmod = getHeaderValue(method, RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER);
-        if (lastmod != null) {
-            long lastmod_sec = parseHttpDate(lastmod);
-            if (lastmod_sec == 0)
-                lastmod_sec = uri.getFetchCompletedTime();
-            if (lastmod_sec != 0)
-                data.put(PROPERTY_LAST_MODIFIED, lastmod_sec);
-        } else {
-            try {
-                long completed = uri.getFetchCompletedTime();
-                if (completed != 0)
-                    data.put(PROPERTY_LAST_MODIFIED, completed);
-            } catch (NullPointerException ex) {
-                logger.warning("CrawlURI.getFetchCompletedTime():" + ex);
+//        data.put(PROPERTY_STATUS, method.getStatusCode());
+        if (method != null) {
+            String etag = getHeaderValue(method, RecrawlAttributeConstants.A_ETAG_HEADER);
+            if (etag != null) {
+                // Etag is usually quoted
+                if (etag.length() >= 2 && etag.startsWith("\"") && etag.endsWith("\""))
+                    etag = etag.substring(1, etag.length() - 1);
+                data.put(PROPERTY_ETAG, etag);
+            }
+            String lastmod = getHeaderValue(method, RecrawlAttributeConstants.A_LAST_MODIFIED_HEADER);
+            if (lastmod != null) {
+                long lastmod_sec = parseHttpDate(lastmod);
+                if (lastmod_sec == 0) {
+                    try {
+                        lastmod_sec = uri.getFetchCompletedTime();
+                    } catch (NullPointerException ex) {
+                        logger.warning("CrawlURI.getFetchCompletedTime():" + ex + " for " + uri.shortReportLine());
+                    }
+                }
+                if (lastmod_sec != 0)
+                    data.put(PROPERTY_LAST_MODIFIED, lastmod_sec);
+            } else {
+                try {
+                    long completed = uri.getFetchCompletedTime();
+                    if (completed != 0)
+                        data.put(PROPERTY_LAST_MODIFIED, completed);
+                } catch (NullPointerException ex) {
+                    logger.warning("CrawlURI.getFetchCompletedTime():" + ex + " for " + uri.shortReportLine());
+                }
             }
         }
         return data;

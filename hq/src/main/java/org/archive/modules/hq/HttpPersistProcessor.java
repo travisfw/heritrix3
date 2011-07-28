@@ -28,6 +28,7 @@ import java.util.logging.Logger;
 
 import org.archive.modules.CrawlURI;
 import org.archive.modules.Processor;
+import org.archive.modules.fetcher.FetchStatusCodes;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.Lifecycle;
 
@@ -37,7 +38,7 @@ import org.springframework.context.Lifecycle;
  * content-digest, through HTTP.
  * @contributor kenji
  */
-public class HttpPersistProcessor extends Processor implements Lifecycle {
+public class HttpPersistProcessor extends Processor implements Lifecycle, FetchStatusCodes {
     private static final Logger logger = Logger.getLogger(HttpPersistProcessor.class.getName());
     
     public static final long RETRY_INTERVAL_MS = 30*1000;
@@ -131,8 +132,16 @@ public class HttpPersistProcessor extends Processor implements Lifecycle {
         this.client = client;
     }
 
+    private boolean isIgnoredStatus(int fetchStatus) {
+        return (fetchStatus == S_RUNTIME_EXCEPTION ||
+                fetchStatus == S_SERIOUS_ERROR ||
+                fetchStatus == S_PROCESSING_THREAD_KILLED ||
+                fetchStatus == S_BLOCKED_BY_RUNTIME_LIMIT);
+    }
     @Override
     protected void innerProcess(CrawlURI uri) throws InterruptedException {
+        // we don't need to REPORT FINISHED events:
+        if (isIgnoredStatus(uri.getFetchStatus())) return;
         if (running) {
             // flush thread is ative. queue and leave.
             try {
