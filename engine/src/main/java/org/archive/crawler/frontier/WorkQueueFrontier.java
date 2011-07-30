@@ -1742,8 +1742,12 @@ implements Closeable,
     }
 
     public void considerIncluded(CrawlURI curi) {
-        this.uriUniqFilter.note(curi.getCanonicalString());
         sheetOverlaysManager.applyOverlaysTo(curi);
+        if(curi.getClassKey()==null) {
+            // remedial processing
+            preparer.prepare(curi);
+        }
+        this.uriUniqFilter.note(curi.getCanonicalString());
         try {
             KeyedProperties.loadOverridesFrom(curi);
             curi.setClassKey(getClassKey(curi));
