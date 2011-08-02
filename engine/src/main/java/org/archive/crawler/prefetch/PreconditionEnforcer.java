@@ -214,7 +214,7 @@ public class PreconditionEnforcer extends Processor  {
      * @param curi CrawlURI we're checking for any required preconditions.
      * @return True, if this <code>curi</code> has a precondition or processing
      *         should be terminated for some other reason.  False if
-     *         we can precede to process this url.
+     *         we can proceed to process this url.
      */
     protected boolean considerRobotsPreconditions(CrawlURI curi) {
         if (getNoRobots()) return false;

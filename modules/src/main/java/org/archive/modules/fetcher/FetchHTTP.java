@@ -636,6 +636,10 @@ public class FetchHTTP extends Processor implements Lifecycle {
                 }
             };
         }
+        
+        // Save method into curi too. Midfetch filters may want to leverage
+        // info in here.
+        curi.setHttpMethod(method);
 
         HostConfiguration customConfigOrNull = configureMethod(curi, method);
 
@@ -809,9 +813,6 @@ public class FetchHTTP extends Processor implements Lifecycle {
         curi.setFetchStatus(method.getStatusCode());
         Header ct = method.getResponseHeader("content-type");
         curi.setContentType((ct == null) ? null : ct.getValue());
-        // Save method into curi too. Midfetch filters may want to leverage
-        // info in here.
-        curi.setHttpMethod(method);
     }
 
     /**
