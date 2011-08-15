@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -52,6 +53,25 @@ public class HttpPersistProcessor extends Processor implements Lifecycle, FetchS
     
     boolean running;
     
+    private final AtomicLong finishedSubmitCount = new AtomicLong(0);
+    /**
+     * count of URIs submitted to HQ finished API.
+     * @return non-negative number
+     */
+    public long getFinishedSubmitCount() {
+        return finishedSubmitCount.get();
+    }
+    private final AtomicLong finishedSubmitMS = new AtomicLong(0);
+    /**
+     * cumulative amount of time, in milliseconds, spent for sending
+     * finished URIs to HQ finished API.
+     * <p>useful for knowing if HQ is the bottleneck of crawl speed.</p>
+     * @return non-negative integer, milliseconds
+     */
+    public long getFinishedSubmitMS() {
+        return finishedSubmitMS.get();
+    }
+    
     public void setFinishedBatchSize(int finishedBatchSize) {
         this.finishedBatchSize = finishedBatchSize;
     }
@@ -71,12 +91,14 @@ public class HttpPersistProcessor extends Processor implements Lifecycle, FetchS
             CrawlURI[] bucket = new CrawlURI[finishedBatchSize + finishedBatchSizeMargin];
             while (running || !finishedQueue.isEmpty()) {
                 Arrays.fill(bucket, null);
+                int count = 0;
                 for (int i = 0; i < bucket.length; i++) {
                     try {
                         long wait = i < finishedBatchSize ? 2 : 0;
                         CrawlURI curi = finishedQueue.poll(wait, TimeUnit.SECONDS);
                         if (curi == null) break;
                         bucket[i] = curi;
+                        count++;
                     } catch (InterruptedException ex) {
                         break;
                     }
@@ -93,11 +115,13 @@ public class HttpPersistProcessor extends Processor implements Lifecycle, FetchS
                         long t0 = System.currentTimeMillis();
                         try {
                             client.mfinished(bucket);
+                            long ms = System.currentTimeMillis() - t0;
+                            finishedSubmitMS.addAndGet(ms);
                             if (logger.isLoggable(Level.FINE))
-                                logger.fine("submission done in "
-                                        + (System.currentTimeMillis() - t0)
+                                logger.fine("submission done in " + ms
                                         + "ms, finishedQueue.size="
                                         + finishedQueue.size());
+                            finishedSubmitCount.addAndGet(count);
                             break;
                         } catch (IOException ex) {
                             logger.warning("submitting finished failed: " + ex);
