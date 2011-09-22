@@ -57,5 +57,20 @@
     	<type>jar</type>
     	<scope>compile</scope>
     </dependency>
+    <dependency>
+    	<groupId>org.apache.hbase</groupId>
+    	<artifactId>hbase</artifactId>
+    	<version>0.90.3</version>
+    	<exclusions>
+    		<exclusion>
+    			<artifactId>guava</artifactId>
+    			<groupId>com.google.guava</groupId>
+    		</exclusion>
+    		<exclusion>
+    			<artifactId>commons-httpclient</artifactId>
+    			<groupId>commons-httpclient</groupId>
+    		</exclusion>
+    	</exclusions>
+    </dependency>
   </dependencies>
 </project>
