@@ -174,6 +174,8 @@ public abstract class AbstractFrontier
     
     public void stop() {
         terminate();
+        
+        // XXX this happens at finish; move to teardown?
         ArchiveUtils.closeQuietly(this.recover);
     }
 
@@ -1234,7 +1236,7 @@ public abstract class AbstractFrontier
     public void reportTo(PrintWriter writer) {
         reportTo(null, writer);
     }
-    
+
     public void onApplicationEvent(ApplicationEvent event) {
         if(event instanceof CrawlStateEvent) {
             CrawlStateEvent event1 = (CrawlStateEvent)event;

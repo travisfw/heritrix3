@@ -36,6 +36,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.Set;
 import java.util.SortedMap;
@@ -301,7 +302,10 @@ implements Closeable,
     @Override
     public void stop() {
         super.stop();
-        // also release resources and trigger end-of-frontier actions
+    }
+    
+    public void destroy() {
+        // release resources and trigger end-of-frontier actions
         close();
     }
     
@@ -490,7 +494,6 @@ implements Closeable,
                         + ": " + wq.getClassKey());
             }
         }
-        //wq.setActive(this, false);
     }
     
     /**
@@ -806,6 +809,9 @@ implements Closeable,
                     // queue has gone 'in process' 
                     readyQ.considerActive();
                     readyQ.setWakeTime(0); // clear obsolete wake time, if any
+
+                    readyQ.setSessionBudget(getBalanceReplenishAmount());
+                    readyQ.setTotalBudget(getQueueTotalBudget());
                     if (readyQ.isOverSessionBudget()) {
                         deactivateQueue(readyQ);
                         readyQ.makeDirty();
@@ -936,11 +942,9 @@ implements Closeable,
      * Activate an inactive queue, if any are available. 
      */
     protected boolean activateInactiveQueue() {
+        
         for( Entry<Integer, Queue<String>> entry : getInactiveQueuesByPrecedence().entrySet()) {
-            //logger.fine("th:" + Thread.currentThread().getName() + " AIQ:" + entry.getKey());
-            Queue<String> iq = entry.getValue();
-            for (String key = iq.poll(); key!=null; key = iq.poll() ) {
-                //logger.fine("th:" + Thread.currentThread().getName() + " AIQ:" + key);
+            for (String key = entry.getValue().poll(); key!=null; key = entry.getValue().poll() ) {
 //                inactiveByClass.remove(key);
                 int expectedPrecedence = entry.getKey();
                 if(key!=null) {
@@ -1387,7 +1391,6 @@ implements Closeable,
         w.print(" retired; ");
         w.print(exhaustedCount);
         w.print(" exhausted");
-//        w.print(" ["+last+ ": "+inCount+" in]");        
         w.flush();
     }
 
@@ -1524,15 +1527,16 @@ implements Closeable,
                     q = null; 
                 }
             }
-                
-            if(q == null) {
+
+            if(q != null) {
+                if(!legendWritten) {
+                    writer.println(q.shortReportLegend());
+                    legendWritten = true;
+                }
+                q.shortReportLineTo(writer);
+            } else {
                 writer.print(" ERROR: "+obj);
             }
-            if(!legendWritten) {
-                writer.println(q.shortReportLegend());
-                legendWritten = true;
-            }
-            q.shortReportLineTo(writer);
         }       
     }
 
@@ -1694,7 +1698,7 @@ implements Closeable,
      * @param total
      * @param max
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings("rawtypes")
     protected void appendQueueReports(PrintWriter w, String label, Iterator<?> iterator,
             int total, int max) {
         Object obj;
@@ -1714,11 +1718,12 @@ implements Closeable,
             } else {
                 q = this.allQueues.get((String)obj);
             }
-            if(q == null) {
+            if(q != null) {
+                w.println(label+"#"+count+":");
+                q.reportTo(w);
+            } else {
                 w.print("WARNING: No report for queue "+obj);
             }
-            w.println(label+"#"+count+":");
-            q.reportTo(w);
         }
         count++;
         if(count < total) {

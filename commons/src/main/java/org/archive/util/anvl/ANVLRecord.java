@@ -115,7 +115,7 @@ public class ANVLRecord extends ArrayList<Element> implements UTF8Bytes {
     
     @Override
     public ANVLRecord clone() {
-        return new ANVLRecord(this);
+        return (ANVLRecord) super.clone();
     }
     
     /**

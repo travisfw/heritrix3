@@ -151,9 +151,13 @@ public class ActionDirectory implements ApplicationContextAware, Lifecycle, Runn
         if (isRunning()) {
             return;
         }
-        // create directories
-        getActionDir().getFile().mkdirs();
-        getDoneDir().getFile().mkdirs();
+        try {
+            // create directories
+            org.archive.util.FileUtils.ensureWriteableDirectory(getActionDir().getFile());
+            org.archive.util.FileUtils.ensureWriteableDirectory(getDoneDir().getFile());
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
         // start background executor
         executor = Executors.newSingleThreadScheduledExecutor();
         executor.scheduleWithFixedDelay(this, getInitialDelaySeconds(), getDelaySeconds(), TimeUnit.SECONDS);
@@ -320,7 +324,10 @@ public class ActionDirectory implements ApplicationContextAware, Lifecycle, Runn
             ex = e;
         } catch (RuntimeException e) {
             ex = e;
-        } 
+        } finally {
+            engine.put("rawOut", null);
+            engine.put("appCtx", null);
+        }
 
         // report output/exception to files paired with script in done dir
         rawOut.flush();

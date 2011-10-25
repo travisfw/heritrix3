@@ -29,7 +29,7 @@
 			<layout>default</layout>
 		</repository>
 	</repositories>
-  
+
 	<dependencies>
 		<dependency>
 			<groupId>org.archive.heritrix</groupId>

@@ -336,7 +336,7 @@ public abstract class WorkQueue implements Frontier.FrontierGroup,
      * return a different item. 
      * 
      */
-    public void unpeek(CrawlURI expected) {
+    public synchronized void unpeek(CrawlURI expected) {
         assert expected == peekItem : "unexpected peekItem";
         peekItem = null;
     }

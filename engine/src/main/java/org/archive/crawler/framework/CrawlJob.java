@@ -50,6 +50,7 @@ import org.apache.commons.collections.MapUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 import org.archive.crawler.event.CrawlStateEvent;
+import org.archive.crawler.framework.CrawlController.StopCompleteEvent;
 import org.archive.crawler.reporting.AlertThreadGroup;
 import org.archive.crawler.reporting.CrawlStatSnapshot;
 import org.archive.crawler.reporting.StatisticsTracker;
@@ -291,16 +292,15 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener<Appli
         if(ac==null) {
             try {
                 ac = new PathSharingContext(new String[] {"file:"+primaryConfig.getAbsolutePath()},false,null);
-//                ac = new PathSharingContext(new String[] {primaryConfig.getAbsolutePath()},false,null);
                 ac.addApplicationListener(this);
                 ac.refresh();
                 getCrawlController(); // trigger NoSuchBeanDefinitionException if no CC
                 getJobLogger().log(Level.INFO,"Job instantiated");
             } catch (BeansException be) {
-//                if(ac!=null) {
-//                    ac.close();
-//                }
-                ac = null; 
+                // Calling doTeardown() and therefore ac.close() here sometimes
+                // triggers an IllegalStateException and logs stack trace from
+                // within spring, even if ac.isActive(). So, just null it.
+                ac = null;
                 beansException(be);
             }
         }
@@ -406,7 +406,7 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener<Appli
      * (Note the crawl may have been configured to start in a 'paused'
      * state.) 
      */
-    public void launch() {
+    public synchronized void launch() {
         if (isProfile()) {
             throw new IllegalArgumentException("Can't launch profile" + this);
         }
@@ -457,6 +457,8 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener<Appli
     
     protected transient Handler currentLaunchJobLogHandler;
 
+    protected boolean needTeardown = false;
+
     /**
      * Start the context, catching and reporting any BeansExceptions.
      */
@@ -471,20 +473,16 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener<Appli
             currentLaunchJobLogHandler.setFormatter(new JobLogFormatter());
             getJobLogger().addHandler(currentLaunchJobLogHandler);
             
-            
         } catch (BeansException be) {
-            ac.close();
-            ac = null; 
+            doTeardown();
             beansException(be);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE,e.getClass().getSimpleName()+": "+e.getMessage(),e);
             try {
-                ac.close();
+                doTeardown();
             } catch (Exception e2) {
                 e2.printStackTrace(System.err);
-            } finally {
-                ac = null;
-            }
+            }        
         }
     }
 
@@ -546,38 +544,59 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener<Appli
     /**
      * Ensure a fresh start for any configuration changes or relaunches,
      * by stopping and discarding an existing ApplicationContext.
+     * 
+     * @return true if teardown is complete when method returns, false if still in progress
      */
     public synchronized boolean teardown() {
-        if(ac!=null) {
+        CrawlController cc = getCrawlController();
+        if (cc != null) {
             acReady = false;
-            CrawlController cc = getCrawlController();
-            if(cc!=null) {
                 cc.requestCrawlStop();
-                // TODO: wait for stop?
+                needTeardown = true;
+                
                 // wait up to 3 seconds for stop
-                for(int i = 0; i < 10; i++) {
+                for(int i = 0; i < 11; i++) {
+                    if(cc.isStopComplete()) {
+                        break;
+                    }
                     try {
                         Thread.sleep(300);
                     } catch (InterruptedException e) {
                         // do nothing
                     }
-                    if(cc.isFinished()) {
-                        break;
-                    }
-                }
-                if(!cc.isFinished()) {
-                    return false; 
-                }
             }
+            
+            if (cc.isStopComplete()) {
+                doTeardown();
+            }
+        }
+        
+        assert needTeardown == (ac != null);
+        return !needTeardown; 
+    }
+
+    // ac guaranteed to be null after this method is called
+    protected synchronized void doTeardown() {
+        needTeardown = false;
+
+        try {
+            if (ac != null) { 
+                ac.close();
+            }
+        } finally {
+            // all this stuff should happen even in case ac.close() bugs out
             ac = null;
+            
+            xmlOkAt = new DateTime(0);
+            
+            if (currentLaunchJobLogHandler != null) {
+                getJobLogger().removeHandler(currentLaunchJobLogHandler);
+                currentLaunchJobLogHandler.close();
+                currentLaunchJobLogHandler = null;
+            }
+
+            getJobLogger().log(Level.INFO,"Job instance discarded");
         }
-        xmlOkAt = new DateTime(0);
-        if (currentLaunchJobLogHandler != null) {
-            getJobLogger().removeHandler(currentLaunchJobLogHandler);
-            currentLaunchJobLogHandler.close();
-        }
-        getJobLogger().log(Level.INFO,"Job instance discarded");
-        return true; 
     }
 
     /**
@@ -674,6 +693,13 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener<Appli
             getJobLogger().log(Level.INFO, ((CrawlStateEvent)event).getState() + 
                     (ac.getCurrentLaunchId() != null ? " " + ac.getCurrentLaunchId() : ""));
         }
+        
+        synchronized (this) {
+            if (needTeardown && event instanceof StopCompleteEvent) {
+                doTeardown();
+            }
+        }
+        
         if(event instanceof CheckpointSuccessEvent) {
             getJobLogger().log(Level.INFO, "CHECKPOINTED "+((CheckpointSuccessEvent)event).getCheckpoint().getName());
         }
@@ -827,7 +853,7 @@ public class CrawlJob implements Comparable<CrawlJob>, ApplicationListener<Appli
         // stats.crawledBytesSummary() also includes totals, so add those in here
         TreeMap<String, Long> map = new TreeMap<String,Long>(stats.getCrawledBytes());
         map.put("total", stats.getCrawledBytes().getTotalBytes());
-        map.put("total-count", stats.getCrawledBytes().getTotalUrls());
+        map.put("totalCount", stats.getCrawledBytes().getTotalUrls());
         return map;
     }
 

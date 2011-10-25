@@ -127,7 +127,6 @@ public interface UriUniqFilter {
     
     /**
      * Close down any allocated resources.
-     * Makes sense calling this when checkpointing.
      */
     public void close();
     

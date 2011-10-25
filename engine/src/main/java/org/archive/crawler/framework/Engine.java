@@ -67,7 +67,12 @@ public class Engine {
         if (System.getProperty("com.sun.management.jmxremote") != null)
             this.jmxExporter = new CrawlJobExporter(this);
         this.jobsDir = jobsDir;
-        this.jobsDir.mkdirs();
+        
+        try {
+            org.archive.util.FileUtils.ensureWriteableDirectory(jobsDir);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
         
         findJobConfigs();
         // TODO: cleanup any cruft from improperly ended jobs 
@@ -188,7 +193,7 @@ public class Engine {
      */
     public synchronized void copy(CrawlJob orig, File destDir, boolean asProfile) 
     throws IOException {
-        destDir.mkdirs();
+        org.archive.util.FileUtils.ensureWriteableDirectory(destDir);
         if(destDir.list().length>0) {
             throw new IOException("destination dir not empty");
         }
@@ -362,7 +367,7 @@ public class Engine {
             inStream.close();
 
             // write default crawler-beans string to new job dir
-            newJobDir.mkdirs();
+            org.archive.util.FileUtils.ensureWriteableDirectory(newJobDir);
             File newJobCxml = new File(newJobDir,"crawler-beans.cxml");
             FileUtils.writeStringToFile(newJobCxml, defaultCxmlStr);
 

@@ -119,7 +119,7 @@ public class Heritrix {
     private static void usage(PrintStream out, String[] args) {
         HelpFormatter hf = new HelpFormatter();
         hf.printHelp("Heritrix", options());
-        out.print("Your arguments were: "+StringUtils.join(args, ' '));
+        out.println("Your arguments were: "+StringUtils.join(args, ' '));
     }
     
     
@@ -191,6 +191,9 @@ public class Heritrix {
     
     public void instanceMain(String[] args)
     throws Exception {
+        System.out.println(System.getProperty("java.vendor")
+                + ' ' + System.getProperty("java.runtime.name") 
+                + ' ' + System.getProperty("java.runtime.version"));
         
         // ensure using java 1.6+ before hitting a later cryptic error
         String version = System.getProperty("java.version");

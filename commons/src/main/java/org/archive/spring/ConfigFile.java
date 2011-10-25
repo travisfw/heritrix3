@@ -73,7 +73,7 @@ public class ConfigFile extends ConfigPath implements ReadSource, WriteTarget {
 
                 return new InputStreamReader(
                         new FileInputStream(getFile()),
-                "UTF-8");
+                        "UTF-8");
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

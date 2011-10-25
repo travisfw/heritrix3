@@ -224,6 +224,7 @@ public class WARCWriterProcessor extends WriterPoolProcessor implements WARCWrit
         WARCWriter writer = (WARCWriter) getPool().borrowFile();
       
         long t1 = System.currentTimeMillis();
+        
         long position = writer.getPosition();
         try {
             // See if we need to open a new file because we've exceeded maxBytes.

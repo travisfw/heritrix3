@@ -27,9 +27,11 @@ import java.util.logging.Logger;
 import org.archive.bdb.BdbModule;
 import org.archive.checkpointing.Checkpoint;
 import org.archive.checkpointing.Checkpointable;
+import org.archive.util.FileUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.springframework.beans.factory.BeanNameAware;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.Lifecycle;
 
@@ -64,7 +66,7 @@ import com.sleepycat.je.OperationStatus;
  * @version $Date$, $Revision$
  */
 public class BdbUriUniqFilter extends SetBasedUriUniqFilter 
-implements Lifecycle, Checkpointable, BeanNameAware {
+implements Lifecycle, Checkpointable, BeanNameAware, DisposableBean {
     private static final long serialVersionUID = -8099357538178524011L;
 
     private static Logger logger =
@@ -129,8 +131,12 @@ implements Lifecycle, Checkpointable, BeanNameAware {
         if(!isRunning()) {
             return; 
         }
-        close();
+        // XXX do sync? currently happens in close()
         isRunning = false; 
+    }
+    
+    public void destroy() {
+        close();
     }
     
     /**
@@ -165,9 +171,7 @@ implements Lifecycle, Checkpointable, BeanNameAware {
     public BdbUriUniqFilter(File bdbEnv, final int cacheSizePercentage)
     throws IOException {
         super();
-        if (!bdbEnv.exists()) {
-            bdbEnv.mkdirs();
-        }
+        FileUtils.ensureWriteableDirectory(bdbEnv);
         EnvironmentConfig envConfig = new EnvironmentConfig();
         envConfig.setAllowCreate(true);
         if (cacheSizePercentage > 0 && cacheSizePercentage < 100) {
@@ -365,9 +369,9 @@ implements Lifecycle, Checkpointable, BeanNameAware {
             return false; // not present
         }
     }
-
+    
     public long flush() {
-    	    // We always write but this might be place to do the sync
+        // We always write but this might be place to do the sync
         // when checkpointing?  TODO.
         return 0;
     }

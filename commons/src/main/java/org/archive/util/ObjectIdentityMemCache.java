@@ -62,7 +62,9 @@ implements ObjectIdentityCache<V> {
                 val = prevVal; 
             }
         }
-        val.setIdentityCache(this); 
+        if (val != null) {
+            val.setIdentityCache(this);
+        }
         return val; 
     }
 

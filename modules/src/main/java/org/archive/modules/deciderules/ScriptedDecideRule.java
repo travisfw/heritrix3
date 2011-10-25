@@ -105,7 +105,7 @@ implements ApplicationContextAware, InitializingBean {
 
     transient protected ThreadLocal<ScriptEngine> threadEngine = 
         new ThreadLocal<ScriptEngine>();
-    protected ScriptEngine sharedEngine;
+    transient protected ScriptEngine sharedEngine;
     /** map for optional use by scripts */
     public Map<Object,Object> sharedMap = new ConcurrentHashMap<Object,Object>();
 
@@ -132,7 +132,9 @@ implements ApplicationContextAware, InitializingBean {
             } catch (ScriptException e) {
                 logger.log(Level.WARNING,e.getMessage(),e);
                 return DecideResult.NONE;
-            } 
+            } finally {
+                engine.put("object", null);
+            }
         }
     }
 
