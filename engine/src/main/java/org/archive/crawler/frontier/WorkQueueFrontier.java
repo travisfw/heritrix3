@@ -35,6 +35,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Queue;
@@ -182,22 +183,39 @@ implements Closeable,
      */
     protected ObjectIdentityCache<WorkQueue> allQueues = null; 
     // of classKey -> ClassKeyQueue
-
+    public ObjectIdentityCache<WorkQueue> getAllQueues() {
+        return allQueues;
+    }
     /**
      * All per-class queues whose first item may be handed out.
      * Linked-list of keys for the queues.
      */
     protected BlockingQueue<String> readyClassQueues;
+    public BlockingQueue<String> getReadyClassQueues() {
+        return readyClassQueues;
+    }
     
     /** all per-class queues from whom a URI is outstanding */
     protected Set<WorkQueue> inProcessQueues = 
         Collections.newSetFromMap(new ConcurrentHashMap<WorkQueue, Boolean>()); // of ClassKeyQueue
+    /**
+     * A copy of inProcessQueues.
+     */
+    public Set<WorkQueue> getInProcessQueuesCopy() {
+        return new LinkedHashSet<WorkQueue>(inProcessQueues);
+    }
     
     /**
      * All per-class queues held in snoozed state, sorted by wake time.
      */
     transient protected DelayQueue<DelayedWorkQueue> snoozedClassQueues;
-    protected StoredSortedMap<Long,DelayedWorkQueue> snoozedOverflow; 
+    public BlockingQueue<DelayedWorkQueue> getSnoozedClassQueues() {
+        return snoozedClassQueues;
+    }
+    protected StoredSortedMap<Long,DelayedWorkQueue> snoozedOverflow;
+    public StoredSortedMap<Long, DelayedWorkQueue> getSnoozedOverflow() {
+        return snoozedOverflow;
+    }
     protected AtomicInteger snoozedOverflowCount = new AtomicInteger(0); 
     protected static int MAX_SNOOZED_IN_MEMORY = 10000; 
     
@@ -482,7 +500,7 @@ implements Closeable,
      * Return a sorted map of all queues of WorkQueue keys, keyed by precedence
      * @return SortedMap<Integer, Queue<String>> of inactiveQueues
      */
-    abstract SortedMap<Integer, Queue<String>> getInactiveQueuesByPrecedence();
+    public abstract SortedMap<Integer, Queue<String>> getInactiveQueuesByPrecedence();
 
     /**
      * Create an inactiveQueue to hold queue names at the given precedence
@@ -513,7 +531,7 @@ implements Closeable,
      * 
      * @return Queue<String> of retired queue names
      */
-    abstract Queue<String> getRetiredQueues();
+    public abstract Queue<String> getRetiredQueues();
 
     /** 
      * Accommodate any changes in retirement-determining settings (like

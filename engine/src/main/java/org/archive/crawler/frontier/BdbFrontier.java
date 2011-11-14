@@ -103,7 +103,7 @@ implements Checkpointable, BeanNameAware {
      * @see org.archive.crawler.frontier.WorkQueueFrontier#getInactiveQueuesByPrecedence()
      */
     @Override
-    SortedMap<Integer, Queue<String>> getInactiveQueuesByPrecedence() {
+    public SortedMap<Integer, Queue<String>> getInactiveQueuesByPrecedence() {
         return inactiveQueuesByPrecedence;
     }
 
@@ -111,7 +111,7 @@ implements Checkpointable, BeanNameAware {
      * @see org.archive.crawler.frontier.WorkQueueFrontier#getRetiredQueues()
      */
     @Override
-    Queue<String> getRetiredQueues() {
+    public Queue<String> getRetiredQueues() {
         return retiredQueues;
     }
     
