@@ -545,6 +545,41 @@ public abstract class WorkQueue implements Frontier.FrontierGroup,
         writer.print("\n");
     }
 
+    /**
+     * duplication of logic within shortReportLineTo(PrintWriter).
+     */
+    public synchronized Map<String, Object> getShortReportTuple() {
+        Map<String, Object> ret = new LinkedHashMap<String, Object>();
+        // queue name
+        ret.put("queue", classKey);
+        // precedence
+        ret.put("precedence", getPrecedence());
+        // count of items
+        ret.put("currentSize", Long.toString(count));
+        // enqueue count
+        ret.put("totalEnqueues", Long.toString(enqueueCount));
+        ret.put("sessionBalance", getSessionBalance());
+        ret.put("lastCost", lastCost);
+        ret.put("averageCost", ArchiveUtils.doubleToString(
+                    ((double) totalExpenditure / costCount), 1));
+        // last dequeue time, if any, or '-'
+        
+        ret.put("lastDequeueTime", (lastDequeueTime != 0
+                ? ArchiveUtils.getLog17Date(lastDequeueTime)
+                : "-"));
+        // wake time if snoozed, or '-'
+        ret.put("wakeTime", (wakeTime != 0
+                ? ArchiveUtils.formatMillisecondsToConventional(
+                        wakeTime - System.currentTimeMillis())
+                : "-"));
+        ret.put("totalSpend", Long.toString(totalExpenditure));
+        ret.put("totalBudget", Long.toString(totalBudget));
+        ret.put("errorCount", Long.toString(errorCount));
+        ret.put("lastPeekUri", lastPeeked);
+        ret.put("lastQueuedUri", lastQueued);
+        return ret;
+    }
+    
     public String shortReportLegend() {
         return "queue precedence currentSize totalEnqueues sessionBalance " +
                 "lastCost (averageCost) lastDequeueTime wakeTime " +
