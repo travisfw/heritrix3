@@ -498,6 +498,11 @@ public abstract class WorkQueue implements Frontier.FrontierGroup,
         return sessionBudget - (totalExpenditure-expenditureAtLastActivation);
     }
 
+    /**
+     * Reporting should be done in subclasses of org.archive.crawler.reporting.Report
+     * use getShortReportTuple instead.
+     */
+    @Deprecated
     public synchronized void shortReportLineTo(PrintWriter writer) {
         // queue name
         writer.print(classKey);
