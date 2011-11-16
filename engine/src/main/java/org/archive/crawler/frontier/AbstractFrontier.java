@@ -1127,6 +1127,10 @@ public abstract class AbstractFrontier
     //
     // Reporter implementation
     // 
+    /**
+     * Nothing within the Heritrix code base appears to use shortReportLine()
+     */
+    @Deprecated
     public String shortReportLine() {
         return ArchiveUtils.shortReportLine(this);
     }
