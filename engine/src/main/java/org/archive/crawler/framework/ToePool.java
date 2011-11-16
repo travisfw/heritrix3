@@ -203,7 +203,8 @@ public class ToePool extends ThreadGroup implements MultiReporter {
             compactReportTo(writer);
             return;
         }
-        if(name!=null && !STANDARD_REPORT.equals(name)) {
+        if(   !MultiReporter.DEFAULT.equals(name)
+           && !STANDARD_REPORT.equals(name)      ) {
             writer.print(name);
             writer.print(" not recognized: giving standard report/n");
         }

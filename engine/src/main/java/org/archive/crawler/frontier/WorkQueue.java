@@ -462,7 +462,7 @@ public abstract class WorkQueue implements Frontier.FrontierGroup,
      * @see org.archive.util.Reporter#reportTo(java.io.Writer)
      */
     public void reportTo(PrintWriter writer) {
-        reportTo(null,writer);
+        reportTo(MultiReporter.DEFAULT, writer);
     }
 
     public synchronized Map<String, Object> shortReportMap() {

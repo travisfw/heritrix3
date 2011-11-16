@@ -1482,7 +1482,7 @@ implements MultiReporter, Serializable, OverlayContext {
      * @see org.archive.util.Reporter#reportTo(java.io.Writer)
      */
     public void reportTo(PrintWriter writer) throws IOException {
-        reportTo(null,writer);
+        reportTo(MultiReporter.DEFAULT, writer);
     }
 
     

@@ -578,7 +578,7 @@ implements MultiReporter, ProgressStatisticsReporter,
     }
 
     public void reportTo(PrintWriter writer) {
-        reportTo(null, writer);
+        reportTo(MultiReporter.DEFAULT, writer);
     }
 
     public String shortReportLine() {

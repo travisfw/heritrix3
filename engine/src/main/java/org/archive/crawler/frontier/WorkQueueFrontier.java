@@ -61,6 +61,7 @@ import org.archive.crawler.util.TopNSet;
 import org.archive.modules.CrawlURI;
 import org.archive.spring.KeyedProperties;
 import org.archive.util.ArchiveUtils;
+import org.archive.util.MultiReporter;
 import org.archive.util.ObjectIdentityCache;
 import org.archive.util.ObjectIdentityMemCache;
 import org.springframework.beans.BeansException;
@@ -1240,7 +1241,8 @@ implements Closeable,
             allQueuesReportTo(writer);
             return;
         }
-        if(name!=null && !STANDARD_REPORT.equals(name)) {
+        if(   !MultiReporter.DEFAULT.equals(name)
+           && !STANDARD_REPORT.equals(name)      ) {
             writer.print(name);
             writer.print(" unavailable; standard report:\n");
         }

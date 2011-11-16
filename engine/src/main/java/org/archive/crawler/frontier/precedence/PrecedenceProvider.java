@@ -65,7 +65,7 @@ FetchStats.CollectsFetchStats, Serializable {
      * @see org.archive.util.Reporter#reportTo(java.io.PrintWriter)
      */
     public void reportTo(PrintWriter writer) {
-        reportTo(null,writer);
+        reportTo(MultiReporter.DEFAULT, writer);
     }
 
     public String shortReportLegend() {

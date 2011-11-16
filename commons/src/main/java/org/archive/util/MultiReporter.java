@@ -33,14 +33,20 @@ public interface MultiReporter  extends Reporter {
      * 
      * @return String array of report names, empty if there is only
      * one report type
+     * The value MultiReporter.DEFAULT need not be included.
      */
     public String[] getReports();
     
     /**
-     * Make a report of the given name to the passed-in Writer,
-     * If null, give the default report. 
+     * Make a report of the given name to the passed-in Writer.
+     * Should at minimum handle the value MultiReporter.DEFAULT 
      * 
      * @param writer to receive report
      */
     public void reportTo(String name, PrintWriter writer);
+    
+    /**
+     * The constant naming the default report from MultiReporter.reportTo(String, PrintWriter)
+     */
+    public static final String DEFAULT = "default";
 }

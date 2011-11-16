@@ -70,6 +70,7 @@ import org.archive.modules.seeds.SeedModule;
 import org.archive.spring.HasKeyedProperties;
 import org.archive.spring.KeyedProperties;
 import org.archive.util.ArchiveUtils;
+import org.archive.util.MultiReporter;
 import org.archive.util.iterator.LineReadingIterator;
 import org.archive.util.iterator.RegexLineIterator;
 import org.json.JSONException;
@@ -1136,7 +1137,7 @@ public abstract class AbstractFrontier
     }
 
     public void reportTo(PrintWriter writer) {
-        reportTo(null, writer);
+        reportTo(MultiReporter.DEFAULT, writer);
     }
 
     public void onApplicationEvent(ApplicationEvent event) {
