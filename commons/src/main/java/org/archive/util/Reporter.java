@@ -20,36 +20,67 @@
 package org.archive.util;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.util.Map;
 
 public interface Reporter {
+
     /**
-     * Make a default report to the passed-in Writer. Should
-     * be equivalent to reportTo(null, writer)
+     * @return tabular data as key-value pairs.
+     * Maps should retain order for its entries, eg by using a LinkedHashMap.
+     * Map entry values should have reasonable toString() implementations.
+     */
+    public Iterable<Map<String,Object>> report();
+
+    /**
+     * @return tabular data as key-value pairs.
+     * Maps should retain order for its entries, eg by using a LinkedHashMap.
+     * Map entry values should have reasonable toString() implementations.
+     */
+    public Iterable<Map<String,Object>> shortReport();
+
+    /**
+     * Formatters turn Reporter output into text, xml, json, or anything else.
+     */
+    public interface Formatter {
+        public InputStream format(Iterable<Map<String, Object>> report);
+    }
+    
+    
+    /**
+     * Make a default report to the passed-in Writer.
+     * New implementations should throw UnsupportedOperationException due to deprecation.
      * 
      * @param writer to receive report
      */
+    @Deprecated
     public void reportTo(PrintWriter writer) throws IOException;
     
     /**
      * Write a short single-line summary report 
+     * New implementations should throw UnsupportedOperationException due to deprecation.
      * 
      * @param writer to receive report
      */
+    @Deprecated
     public void shortReportLineTo(PrintWriter pw) throws IOException;
     
-
-    /**
-     * @return Same data that's in the single line report, as key-value pairs
-     */
-    public Map<String,Object> shortReportMap();
-
     
     /**
+     * Like report() but returns only one row.
+     * Deprecated in favor of shortReport() which works with Reporter.Formatter.format()
+     */
+    @Deprecated
+    public Map<String,Object> shortReportMap();
+
+
+    /**
      * Return a legend for the single-line summary report as a String.
+     * New implementations should throw UnsupportedOperationException due to deprecation.
      * 
      * @return String single-line summary legend
      */
+    @Deprecated
     public String shortReportLegend();
 }
