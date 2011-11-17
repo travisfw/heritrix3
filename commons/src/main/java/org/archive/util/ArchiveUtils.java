@@ -29,6 +29,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.URL;
@@ -38,6 +40,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -725,17 +728,72 @@ public class ArchiveUtils {
      * @return String of report
      */
     public static String shortReportLine(Reporter rep) {
-        StringWriter sw = new StringWriter();
-        PrintWriter pw = new PrintWriter(sw);
+        InputStream is = tabbedTextReportFormatter.format(rep.shortReport());
         try {
-            rep.shortReportLineTo(pw);
+            return IOUtils.toString(is, "UTF8");
         } catch (IOException e) {
-            // not really possible
             e.printStackTrace();
+        } finally {
+            try {
+                is.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
-        pw.flush();
-        return sw.toString();
+        return "";
     }
+
+    
+    /**
+     * Formats the report to tab delimited text in a separate thread while you read it.
+     */
+    public static Reporter.Formatter tabbedTextReportFormatter = new Reporter.Formatter() {
+        @Override
+        public InputStream format(final Iterable<Map<String, Object>> report) {
+            final PipedInputStream ret = new PipedInputStream();
+            // use a thread so that the report may continue to be generated while the InputStream is being written to
+            new Thread() {
+                public void run() {
+                    // write to the InputStream returned
+                    PrintWriter pw = null;
+                    try {
+                        pw = new PrintWriter(new PipedOutputStream(ret));
+                        boolean firstLine = true;
+                        for (Map<String, Object> m : report) {
+                            if (firstLine) {
+                                firstLine = false;
+                                // write out a header / legend
+                                for (Iterator<String> it = m.keySet().iterator();
+                                        it.hasNext();) {
+                                    String s = it.next();
+                                    pw.write(s);
+                                    if (it.hasNext())
+                                        pw.write("\t");
+                                }
+                            }
+
+                            for (Iterator<Object> it = m.values().iterator();
+                                    it.hasNext();) {
+                                pw.write(String.valueOf(it.next()));
+                                if (it.hasNext())
+                                    pw.write("\t");
+                            }
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } finally {
+                        if (pw != null) {
+                            pw.flush();
+                            pw.close();
+                        }
+                    }
+                    // done writing
+                }
+            }.start();
+            return ret;
+        }
+    };
+
 
     /**
      * Compose the requested report into a String. DANGEROUS IF REPORT
