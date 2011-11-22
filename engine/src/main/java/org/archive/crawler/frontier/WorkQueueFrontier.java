@@ -64,6 +64,7 @@ import org.archive.util.ArchiveUtils;
 import org.archive.util.MultiReporter;
 import org.archive.util.ObjectIdentityCache;
 import org.archive.util.ObjectIdentityMemCache;
+import org.archive.util.Reporter;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -742,7 +743,33 @@ implements Closeable,
     }
     
     // temporary debugging support
-    int depthFindEligibleURI = 0; 
+    int depthFindEligibleURI = 0;
+
+    public Reporter allNonempty = new Reporter() {
+
+        @Override
+        public Iterable<Map<String, Object>> report() {
+            // TODO Auto-generated method stub
+            return null;
+        }
+
+        @Override
+        public Iterable<Map<String, Object>> shortReport() {
+            // TODO Auto-generated method stub
+            return null;
+        }
+
+        // TODO delete this stuff
+        @Override
+        public void reportTo(PrintWriter writer) throws IOException { throw new UnsupportedOperationException("deprecated"); }
+        @Override
+        public void shortReportLineTo(PrintWriter pw) throws IOException { throw new UnsupportedOperationException("deprecated"); }
+        @Override
+        public Map<String, Object> shortReportMap() { throw new UnsupportedOperationException("deprecated"); }
+        @Override
+        public String shortReportLegend() { throw new UnsupportedOperationException("deprecated"); }
+        
+    }; 
 
     /**
      * Check for any future-scheduled URIs now eligible for reenqueuing

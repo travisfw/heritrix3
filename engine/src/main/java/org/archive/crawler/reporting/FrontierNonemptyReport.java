@@ -38,8 +38,11 @@ public class FrontierNonemptyReport extends Report {
         } else if (stats.controller.getFrontier().isEmpty()) {
             writer.println("frontier empty");
         } else {
-            stats.controller.getFrontier().reportTo(
-                    WorkQueueFrontier.ALL_NONEMPTY, writer);
+            // TODO delete commented out code
+//            stats.controller.getFrontier().reportTo(
+//                    WorkQueueFrontier.ALL_NONEMPTY, writer);
+            WorkQueueFrontier wqf = (WorkQueueFrontier)stats.controller.getFrontier();
+            wqf.allNonempty.reportTo(writer);
         }
     }
 
