@@ -357,4 +357,16 @@ public class ToePool extends ThreadGroup implements MultiReporter {
         }
         return true;
     }
+
+    @Override
+    public Iterable<Map<String, Object>> report() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    @Override
+    public Iterable<Map<String, Object>> shortReport() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 }

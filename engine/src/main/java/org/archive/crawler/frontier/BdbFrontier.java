@@ -21,6 +21,7 @@ package org.archive.crawler.frontier;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Map;
 import java.util.Queue;
 import java.util.SortedMap;
 import java.util.Map.Entry;
@@ -463,5 +464,15 @@ implements Checkpointable, BeanNameAware {
             val = (val==null) ? mark : val+","+mark;
             queueSummaries.put(key, val);
         }
+    }
+    @Override
+    public Iterable<Map<String, Object>> report() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+    @Override
+    public Iterable<Map<String, Object>> shortReport() {
+        // TODO Auto-generated method stub
+        return null;
     }
 }

@@ -258,4 +258,16 @@ public class FetchStats implements Serializable, FetchStatusCodes, MultiReporter
     public long getLastSuccessTime() {
         return lastSuccessTime;
     }
+
+    @Override
+    public Iterable<Map<String, Object>> report() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    @Override
+    public Iterable<Map<String, Object>> shortReport() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 }

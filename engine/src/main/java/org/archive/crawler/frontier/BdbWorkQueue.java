@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -179,5 +180,17 @@ implements Serializable {
         kryo.autoregister(SimplePrecedenceProvider.class);
         kryo.autoregister(byte[].class);
         kryo.setRegistrationOptional(true); 
+    }
+
+    @Override
+    public Iterable<Map<String, Object>> report() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    @Override
+    public Iterable<Map<String, Object>> shortReport() {
+        // TODO Auto-generated method stub
+        return null;
     }
 }

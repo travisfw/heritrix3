@@ -605,4 +605,16 @@ implements MultiReporter, ProgressStatisticsReporter,
     public InetAddress resolve(String host) {
         return controller.getServerCache().getHostFor(host).getIP();
     }
+
+    @Override
+    public Iterable<Map<String, Object>> report() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    @Override
+    public Iterable<Map<String, Object>> shortReport() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 }

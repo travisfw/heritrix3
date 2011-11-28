@@ -1901,4 +1901,16 @@ implements MultiReporter, Serializable, OverlayContext {
         return getContentType().matches("(?i).*charset=.*");
     }
 
+    @Override
+    public Iterable<Map<String, Object>> report() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    @Override
+    public Iterable<Map<String, Object>> shortReport() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
 }

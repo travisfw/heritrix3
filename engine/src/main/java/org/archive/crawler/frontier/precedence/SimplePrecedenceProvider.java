@@ -18,6 +18,8 @@
  */
 package org.archive.crawler.frontier.precedence;
 
+import java.util.Map;
+
 /**
  * The most simple precedence provider, simply wrapping a resettable
  * integer value. 
@@ -44,6 +46,18 @@ public class SimplePrecedenceProvider extends PrecedenceProvider {
      */
     public void setPrecedence(Integer p) {
         precedence = p; 
+    }
+
+    @Override
+    public Iterable<Map<String, Object>> report() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    @Override
+    public Iterable<Map<String, Object>> shortReport() {
+        // TODO Auto-generated method stub
+        return null;
     }
 
 }
