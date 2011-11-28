@@ -144,4 +144,16 @@ implements Iterable<Processor>,
     public interface ChainStatusReceiver {
         public void atProcessor(Processor proc);
     }
+
+    @Override
+    public Iterable<Map<String, Object>> report() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    @Override
+    public Iterable<Map<String, Object>> shortReport() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 }
