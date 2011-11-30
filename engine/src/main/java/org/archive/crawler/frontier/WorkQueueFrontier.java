@@ -760,6 +760,57 @@ implements Closeable,
         }
 
         // TODO delete this stuff
+        /** Compact report of all nonempty queues (one queue per line)
+         * 
+         * @param writer
+         */
+        @Override
+        public void reportTo(PrintWriter writer) throws IOException {
+            ArrayList<WorkQueue> inProcessQueuesCopy =
+                    new ArrayList<WorkQueue>(inProcessQueues);
+            
+            writer.print("\n -----===== IN-PROCESS QUEUES =====-----\n");
+            queueSingleLinesTo(writer, inProcessQueuesCopy.iterator());
+
+            writer.print("\n -----===== READY QUEUES =====-----\n");
+            queueSingleLinesTo(writer, WorkQueueFrontier.this.readyClassQueues.iterator());
+
+            writer.print("\n -----===== SNOOZED QUEUES =====-----\n");
+            queueSingleLinesTo(writer, WorkQueueFrontier.this.snoozedClassQueues.iterator());
+            queueSingleLinesTo(writer, WorkQueueFrontier.this.snoozedOverflow.values().iterator());
+            
+            writer.print("\n -----===== INACTIVE QUEUES =====-----\n");
+            for(Queue<String> inactiveQueues : getInactiveQueuesByPrecedence().values()) {
+                queueSingleLinesTo(writer, inactiveQueues.iterator());
+            }
+            
+            writer.print("\n -----===== RETIRED QUEUES =====-----\n");
+            queueSingleLinesTo(writer, getRetiredQueues().iterator());
+        }
+        @Override
+        public void shortReportLineTo(PrintWriter pw) throws IOException { throw new UnsupportedOperationException("deprecated"); }
+        @Override
+        public Map<String, Object> shortReportMap() { throw new UnsupportedOperationException("deprecated"); }
+        @Override
+        public String shortReportLegend() { throw new UnsupportedOperationException("deprecated"); }
+        
+    };
+
+    public Reporter standardReport = new Reporter() {
+
+        @Override
+        public Iterable<Map<String, Object>> report() {
+            // TODO Auto-generated method stub
+            return null;
+        }
+
+        @Override
+        public Iterable<Map<String, Object>> shortReport() {
+            // TODO Auto-generated method stub
+            return null;
+        }
+
+        // TODO delete this stuff
         @Override
         public void reportTo(PrintWriter writer) throws IOException { throw new UnsupportedOperationException("deprecated"); }
         @Override
@@ -769,7 +820,7 @@ implements Closeable,
         @Override
         public String shortReportLegend() { throw new UnsupportedOperationException("deprecated"); }
         
-    }; 
+    };
 
     /**
      * Check for any future-scheduled URIs now eligible for reenqueuing
@@ -1261,7 +1312,7 @@ implements Closeable,
      */
     public synchronized void reportTo(String name, PrintWriter writer) {
         if(ALL_NONEMPTY.equals(name)) {
-            allNonemptyReportTo(writer);
+            assert false : "use workQueueFrontier.allNonempty.reportTo(PrintWriter)";
             return;
         }
         if(ALL_QUEUES.equals(name)) {
@@ -1275,41 +1326,7 @@ implements Closeable,
         }
         standardReportTo(writer);
     }   
-    
-    /** Compact report of all nonempty queues (one queue per line)
-     * 
-     * @param writer
-     */
-    private void allNonemptyReportTo(PrintWriter writer) {
-        ArrayList<WorkQueue> inProcessQueuesCopy;
-        synchronized(this.inProcessQueues) {
-            // grab a copy that will be stable against mods for report duration 
-            Collection<WorkQueue> inProcess = this.inProcessQueues;
-            inProcessQueuesCopy = new ArrayList<WorkQueue>(inProcess);
-        }
-        writer.print("\n -----===== IN-PROCESS QUEUES =====-----\n");
-        queueSingleLinesTo(writer, inProcessQueuesCopy.iterator());
 
-        writer.print("\n -----===== READY QUEUES =====-----\n");
-        queueSingleLinesTo(writer, this.readyClassQueues.iterator());
-
-        writer.print("\n -----===== SNOOZED QUEUES =====-----\n");
-        queueSingleLinesTo(writer, this.snoozedClassQueues.iterator());
-        queueSingleLinesTo(writer, this.snoozedOverflow.values().iterator());
-        
-        writer.print("\n -----===== INACTIVE QUEUES =====-----\n");
-        for(Queue<String> inactiveQueues : getInactiveQueuesByPrecedence().values()) {
-            queueSingleLinesTo(writer, inactiveQueues.iterator());
-        }
-        
-        writer.print("\n -----===== RETIRED QUEUES =====-----\n");
-        queueSingleLinesTo(writer, getRetiredQueues().iterator());
-    }
-
-    /** Compact report of all nonempty queues (one queue per line)
-     * 
-     * @param writer
-     */
     private void allQueuesReportTo(PrintWriter writer) {
         queueSingleLinesTo(writer, allQueues.keySet().iterator());
     }

@@ -22,18 +22,22 @@ package org.archive.util;
 import java.io.PrintWriter;
 
 /**
+ * MultiReporter would be useful in an environment where the choice of reports
+ * is made by a user at runtime. However, all uses hard code the report type,
+ * and getReports() is never used. In refactoring the reporting functionality,
+ * MultiReporter is going to be axed to reduce tech debt.
+ * 
  * @contributor stack
  */
-public interface MultiReporter  extends Reporter {
+@Deprecated
+public interface MultiReporter extends Reporter {
     /**
-     * Get an array of report names offered by this Reporter. 
-     * A name in brackets indicates a free-form String, 
-     * in accordance with the informal description inside
-     * the brackets, may yield a useful report.
+     * Get an array of report names offered by this Reporter. A name in brackets
+     * indicates a free-form String, in accordance with the informal description
+     * inside the brackets, may yield a useful report.
      * 
-     * @return String array of report names, empty if there is only
-     * one report type
-     * The value MultiReporter.DEFAULT need not be included.
+     * @return String array of report names, empty if there is only one report
+     *         type The value MultiReporter.DEFAULT need not be included.
      */
     public String[] getReports();
     

@@ -93,6 +93,7 @@ import org.archive.util.ArchiveUtils;
 import org.archive.util.Base32;
 import org.archive.util.MultiReporter;
 import org.archive.util.Recorder;
+import org.archive.util.Reporter;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -110,7 +111,7 @@ import org.json.JSONObject;
  * @author Gordon Mohr
  */
 public class CrawlURI 
-implements MultiReporter, Serializable, OverlayContext {
+implements Reporter, Serializable, OverlayContext {
     private static final long serialVersionUID = 3L;
 
     private static final Logger logger =

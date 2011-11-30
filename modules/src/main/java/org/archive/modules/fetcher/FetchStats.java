@@ -26,6 +26,7 @@ import java.util.Map;
 import org.archive.modules.CrawlURI;
 import org.archive.util.ArchiveUtils;
 import org.archive.util.MultiReporter;
+import org.archive.util.Reporter;
 import org.apache.commons.httpclient.HttpStatus; 
 import org.archive.modules.deciderules.recrawl.IdenticalDigestDecideRule;
 
@@ -36,7 +37,7 @@ import org.archive.modules.deciderules.recrawl.IdenticalDigestDecideRule;
  * 
  * @author gojomo
  */
-public class FetchStats implements Serializable, FetchStatusCodes, MultiReporter {
+public class FetchStats implements Serializable, FetchStatusCodes, Reporter {
     private static final long serialVersionUID = 8624425657056569036L;
 
     public enum Stage {SCHEDULED, RELOCATED, RETRIED, 

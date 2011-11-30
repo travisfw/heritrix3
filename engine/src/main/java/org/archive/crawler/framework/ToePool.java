@@ -19,6 +19,7 @@
 
 package org.archive.crawler.framework;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -31,6 +32,7 @@ import org.archive.crawler.reporting.AlertThreadGroup;
 import org.archive.util.ArchiveUtils;
 import org.archive.util.Histotable;
 import org.archive.util.MultiReporter;
+import org.archive.util.Reporter;
 
 /**
  * A collection of ToeThreads. The class manages the ToeThreads currently
@@ -43,7 +45,7 @@ import org.archive.util.MultiReporter;
  *
  * @see org.archive.crawler.framework.ToeThread
  */
-public class ToePool extends ThreadGroup implements MultiReporter {
+public class ToePool extends ThreadGroup implements Reporter {
     /** run worker thread slightly lower than usual */
     public static int DEFAULT_TOE_PRIORITY = Thread.NORM_PRIORITY - 1;
     
@@ -192,23 +194,81 @@ public class ToePool extends ThreadGroup implements MultiReporter {
     
     public static String STANDARD_REPORT = "standard";
     public static String COMPACT_REPORT = "compact";
-    protected static String[] REPORTS = {STANDARD_REPORT,COMPACT_REPORT};
 
-    public String[] getReports() {
-        return REPORTS;
-    }
+    public final Reporter standardReport = new Reporter() {
 
-    public void reportTo(String name, PrintWriter writer) {
-        if(COMPACT_REPORT.equals(name)) {
+        @Override
+        public Iterable<Map<String, Object>> report() {
+            // TODO Auto-generated method stub
+            return null;
+        }
+
+        @Override
+        public Iterable<Map<String, Object>> shortReport() {
+            // TODO Auto-generated method stub
+            return null;
+        }
+
+        @Override
+        public void reportTo(PrintWriter writer) throws IOException {
+            standardReportTo(writer);
+        }
+        @Override
+        public void shortReportLineTo(PrintWriter pw) throws IOException {
+            assert false : "deprecated";
+        }
+        @Override
+        public Map<String, Object> shortReportMap() {
+            assert false : "deprecated";
+            throw new UnsupportedOperationException("deprecated");
+        }
+        @Override
+        public String shortReportLegend() {
+            assert false: "deprecated";
+            throw new UnsupportedOperationException("deprecated");
+        }
+    };
+    
+    public final Reporter compactReport = new Reporter() {
+
+        @Override
+        public Iterable<Map<String, Object>> report() {
+            throw new Error("unimplemented");
+        }
+
+        @Override
+        public Iterable<Map<String, Object>> shortReport() {
+            throw new Error("unimplemented");
+        }
+
+        @Override
+        public void reportTo(PrintWriter writer) throws IOException {
             compactReportTo(writer);
-            return;
         }
-        if(   !MultiReporter.DEFAULT.equals(name)
-           && !STANDARD_REPORT.equals(name)      ) {
-            writer.print(name);
-            writer.print(" not recognized: giving standard report/n");
+        @Override
+        public void shortReportLineTo(PrintWriter pw) throws IOException {
+            assert false : "deprecated";
         }
-        standardReportTo(writer);
+        @Override
+        public Map<String, Object> shortReportMap() {
+            assert false : "deprecated";
+            throw new UnsupportedOperationException("deprecated");
+        }
+        @Override
+        public String shortReportLegend() {
+            assert false: "deprecated";
+            throw new UnsupportedOperationException("deprecated");
+        }
+    };
+
+    
+    @Override
+    public void reportTo(PrintWriter writer) {
+        try {
+            standardReport.reportTo(writer);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }      
             
     /* (non-Javadoc)
@@ -263,6 +323,7 @@ public class ToePool extends ThreadGroup implements MultiReporter {
         }
     }
 
+    @Override
     public Map<String, Object> shortReportMap() {
         Histotable<Object> steps = new Histotable<Object>();
         Histotable<Object> processors = new Histotable<Object>();
@@ -292,6 +353,7 @@ public class ToePool extends ThreadGroup implements MultiReporter {
     }
 
     @SuppressWarnings("unchecked")
+    @Override
     public void shortReportLineTo(PrintWriter w) {
         Map<String, Object> map = shortReportMap();
         w.print(map.get("toeCount"));
@@ -328,12 +390,9 @@ public class ToePool extends ThreadGroup implements MultiReporter {
     /* (non-Javadoc)
      * @see org.archive.util.Reporter#singleLineLegend()
      */
+    @Override
     public String shortReportLegend() {
         return "total: mostCommonStateTotal secondMostCommonStateTotal";
-    }
-
-    public void reportTo(PrintWriter writer) {
-        reportTo(null,writer);
     }
 
 

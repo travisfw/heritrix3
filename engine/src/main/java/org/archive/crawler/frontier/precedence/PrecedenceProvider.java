@@ -28,12 +28,13 @@ import org.archive.modules.fetcher.FetchStats;
 import org.archive.modules.fetcher.FetchStats.Stage;
 import org.archive.util.ArchiveUtils;
 import org.archive.util.MultiReporter;
+import org.archive.util.Reporter;
 
 /**
  * Parent class for precedence-providers, stateful helpers that can be 
  * installed in a WorkQueue to implement various queue-precedence policies. 
  */
-abstract public class PrecedenceProvider implements MultiReporter, 
+abstract public class PrecedenceProvider implements Reporter, 
 FetchStats.CollectsFetchStats, Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -53,19 +54,11 @@ FetchStats.CollectsFetchStats, Serializable {
     }
 
     /* (non-Javadoc)
-     * @see org.archive.util.Reporter#reportTo(java.lang.String, java.io.PrintWriter)
-     */
-    public void reportTo(String name, PrintWriter writer) {
-        // name ignored, only one report
-        writer.println(shortReportLegend());
-        shortReportLineTo(writer);
-    }
-
-    /* (non-Javadoc)
      * @see org.archive.util.Reporter#reportTo(java.io.PrintWriter)
      */
     public void reportTo(PrintWriter writer) {
-        reportTo(MultiReporter.DEFAULT, writer);
+        writer.println(shortReportLegend());
+        shortReportLineTo(writer);
     }
 
     public String shortReportLegend() {

@@ -19,6 +19,7 @@
  
 package org.archive.crawler.reporting;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 
 import org.archive.crawler.frontier.WorkQueueFrontier;
@@ -28,6 +29,7 @@ import org.archive.crawler.frontier.WorkQueueFrontier;
  * crawl for reference).
  * 
  * @contributor gojomo
+ * @contributor travis@archive.org
  */
 public class FrontierNonemptyReport extends Report {
 
@@ -42,7 +44,11 @@ public class FrontierNonemptyReport extends Report {
 //            stats.controller.getFrontier().reportTo(
 //                    WorkQueueFrontier.ALL_NONEMPTY, writer);
             WorkQueueFrontier wqf = (WorkQueueFrontier)stats.controller.getFrontier();
-            wqf.allNonempty.reportTo(writer);
+            try {
+                wqf.allNonempty.reportTo(writer);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
